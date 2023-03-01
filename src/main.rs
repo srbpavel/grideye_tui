@@ -26,32 +26,6 @@ use tui::Terminal;
 use tui::Frame;
 use tui::backend::Backend;
 
-/* // TERMION
-use tui::backend::TermionBackend;
-use termion::event::Key;
-use termion::input::TermRead;
-use termion::raw::IntoRawMode;
-use termion::raw::RawTerminal;
-*/
-
-// CROSSTERM
-use tui::backend::CrosstermBackend;
-
-use crossterm::terminal::disable_raw_mode;
-use crossterm::terminal::enable_raw_mode;
-use crossterm::terminal::LeaveAlternateScreen;
-use crossterm::terminal::EnterAlternateScreen;
-
-use crossterm::execute;
-
-use crossterm::event::read;
-use crossterm::event::KeyCode;
-use crossterm::event::Event;
-use crossterm::event::DisableMouseCapture;
-use crossterm::event::EnableMouseCapture;
-
-//_
-
 use tui::layout::Constraint;
 use tui::layout::Direction;
 use tui::layout::Direction::Horizontal;
@@ -72,6 +46,21 @@ use tui::widgets::canvas::Canvas;
 use tui::widgets::List;
 use tui::widgets::ListItem;
 use tui::style::Modifier;
+
+// CROSSTERM
+use tui::backend::CrosstermBackend;
+use crossterm::terminal::disable_raw_mode;
+use crossterm::terminal::enable_raw_mode;
+use crossterm::terminal::LeaveAlternateScreen;
+use crossterm::terminal::EnterAlternateScreen;
+use crossterm::execute;
+/* // key press
+use crossterm::event::read;
+use crossterm::event::KeyCode;
+use crossterm::event::Event;
+*/
+use crossterm::event::DisableMouseCapture;
+use crossterm::event::EnableMouseCapture;
 
 // 1000ms / 25ms = 40fps/Hz
 const UI_REFRESH_DELAY: Duration = Duration::from_millis(25);
@@ -187,16 +176,6 @@ impl Data {
     }
 }
 
-/*
-struct CleanUp;
-
-impl Drop for CleanUp {
-    fn drop(&mut self) {
-        crossterm::terminal::disable_raw_mode().expect("Unable to disable raw mode")
-    }
-}
-*/
-
 //
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // STOP SIGNAL
@@ -205,119 +184,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // CROSSTERM
     enable_raw_mode()?;
-    //let _clean_up = CleanUp;
-    
-    // HANDLE CTRL+C
-    //let (tx, rx) = mpsc::channel();
-    //let tick_rate = Duration::from_millis(200);
-
-    thread::spawn(move || {
-        /*
-        let mut last_tick = Instant::now();
-
-        loop {
-            let timeout = tick_rate
-                .checked_sub(last_tick.elapsed())
-                .unwrap_or_else(|| Duration::from_secs(0));
-            
-            if event::poll(timeout).expect("poll works") {
-                if let CEvent::Key(key) = event::read().expect("can read events") {
-                    tx.send(Event::Input(key)).expect("can send events");
-                }
-            }
-
-            if last_tick.elapsed() >= tick_rate {
-                if let Ok(_) = tx.send(Event::Tick) {
-                    last_tick = Instant::now();
-                }
-            }
-        }
-        */
-
-        // /* // OK
-        let event = read().unwrap(); //?
-        println!("Event: {:?}\r", event);
-
-        //if event == Event::Key(KeyCode::Esc.into()) {
-        if event ==  Event::Key(
-            KeyCode::Char('c').into(),
-            //code: KeyCode::Char('c'),
-            //modifiers: event::KeyModifiers::CONTROL,
-        ) {
-            running.store(false, Ordering::SeqCst);
-            //break; // in closure !!!
-            std::process::exit(1)
-        }
-        // */
-        
-        /*
-        if let Event::Key(event) = event::read().expect("Failed to read line") {
-            match event {
-                KeyEvent {
-                    code: KeyCode::Char('q'),
-                    modifiers: event::KeyModifiers::NONE,
-                    kind: crossterm::event::KeyEventKind::Press, // Repeat
-                    state: crossterm::event::KeyEventState {},
-                //} => break,
-                } => {
-                    std::process::exit(1)
-                },
-                _ => {
-                    //todo
-                }
-            }
-            println!("{:?}\r", event);
-        };
-        */
-
-        /*
-        let mut buf = [0; 1];
-
-        while io::stdin()
-            .read(&mut buf)
-            .expect("Failed to read line") == 1 && buf != [b'q']
-        {}
-        */
-
-        /*
-        let event = read()?;
-        
-        println!("Event: {:?}\r", event);
-
-        if event == Event::Key(KeyCode::Esc.into()) {
-        //if event == Event::Key(KeyCode::Modifier(ModifierKeyCode::LeftControl).into()) {
-            running.store(false, Ordering::SeqCst);
-            break;
-        }
-        
-        /*
-        for key in io::stdin().keys().flatten() {
-            /* // TERMION
-            if let Key::Ctrl('c') = key {
-                running.store(false, Ordering::SeqCst);
-                break;
-            }
-            */
-            // CROSSTERM
-            if let KeyEven::Ctrl('c') = key {
-                running.store(false, Ordering::SeqCst);
-                break;
-            }
-            
-        }
-        */
-        
-        */
-    });
-
-    // INITIALIZE TERMINAL APP
-    /* // TERMION
-    let stdout = io::stdout().into_raw_mode()?;
-    let backend = TermionBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-    */
-
-    // CROSSTERM
     let mut stdout = io::stdout();
     execute!(stdout,
              EnterAlternateScreen,
@@ -361,13 +227,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         thread::sleep(UI_REFRESH_DELAY);
     }
 
-    // TERMION
-    // RESET TERMINAL
-    //let _ = terminal.clear();
-    //let _ = terminal.show_cursor();
-
-   
-    // CROSSTERM
     // restore terminal
     disable_raw_mode()?;
 
@@ -383,9 +242,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 // terminal split to chunks + show data
-// TERMION 
-//fn render(terminal: &mut Terminal<TermionBackend<RawTerminal<Stdout>>>,
-// CROSSTERM
 fn render<B>(terminal: &mut Terminal<B>,
              data: &mut Data)
 where
