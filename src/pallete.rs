@@ -55,7 +55,7 @@ fn color_range(start: u8,
 
 //
 #[allow(unused)]
-pub fn temperature_to_color(pallete: &[(f32, &(u8, u8, u8))],
+pub fn temperature_to_color(pallete: &[(f32, (u8, u8, u8))],
                             temperature: Temperature,
 ) -> Option<(u8, u8, u8)> {
     pallete
@@ -64,7 +64,7 @@ pub fn temperature_to_color(pallete: &[(f32, &(u8, u8, u8))],
             if (*index == temperature).eq(&true) {
                 Some(*color)
             } else { None }
-        }).copied()
+        })
 }
 
 #[allow(unused)]

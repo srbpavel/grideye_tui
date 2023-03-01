@@ -5,7 +5,7 @@ use pallete::IRON_BOW_LONG as PALLETE;
 
 use std::thread;
 use std::io;
-use std::io::Stdout;
+
 use std::time::Duration;
 use std::collections::VecDeque;
 use std::sync::mpsc;
@@ -25,15 +25,32 @@ use rumqttc::QoS;
 use tui::Terminal;
 use tui::Frame;
 use tui::backend::Backend;
-use tui::backend::TermionBackend;
-//use tui::backend::CrosstermBackend;
 
-// /* // TERMION
+/* // TERMION
+use tui::backend::TermionBackend;
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
 use termion::raw::RawTerminal;
-// */
+*/
+
+// CROSSTERM
+use tui::backend::CrosstermBackend;
+
+use crossterm::terminal::disable_raw_mode;
+use crossterm::terminal::enable_raw_mode;
+use crossterm::terminal::LeaveAlternateScreen;
+use crossterm::terminal::EnterAlternateScreen;
+
+use crossterm::execute;
+
+use crossterm::event::read;
+use crossterm::event::KeyCode;
+use crossterm::event::Event;
+use crossterm::event::DisableMouseCapture;
+use crossterm::event::EnableMouseCapture;
+
+//_
 
 use tui::layout::Constraint;
 use tui::layout::Direction;
@@ -63,7 +80,7 @@ const DATA_CAPACITY: usize = 100;
 const COLOR_NONE_MAP: Color = Color::Black;
 const COLOR_NONE_BAR: Color = Color::Magenta;
 
-const FLAG_SHOW_INDEX: bool = true; //false;
+const FLAG_SHOW_INDEX: bool = false;
 const FLAG_SHOW_BAR_INDEX: bool = false;
 const FLAG_SHOW_COLOR: bool = false;
 
@@ -74,16 +91,6 @@ const TEMPERATURE_MAX: f32 = -55.0;
 const TEMPERATURE_MIN: f32 = 125.0;
 const TEMPERATURE_BOUNDARY_OFFSET: f32 = 5.0;
 const TEMPERATURE_INDEX_STEP: f32 = 0.25; // todo!() verify sensor resolution
-
-/*
-// cannot have fixed need to recalculate ...
-#[allow(unused)]
-const TEMPERATURE_BOUNDARY_FIXED_MAX: f32 = 34.0;
-#[allow(unused)]
-const TEMPERATURE_BOUNDARY_FIXED_MIN: f32 = 15.0;
-#[allow(unused)]
-const TEMPERATURE_DIFF_LIMIT: f32 = 5.0;
-*/
 
 const LEN: usize = 8;
 const POW: usize = LEN * LEN;
@@ -115,8 +122,7 @@ enum BoundaryVariant {
 
 type Temperature = f32;
 type UiValue = f64;
-// do we need a reference here?
-type ColorIndex<'a> = Vec<(Temperature, &'a(u8, u8, u8))>;
+type ColorIndex = Vec<(Temperature, (u8, u8, u8))>;
 type Array =  [Temperature; POW];
 
 struct ChannelData {
@@ -181,42 +187,145 @@ impl Data {
     }
 }
 
+/*
+struct CleanUp;
+
+impl Drop for CleanUp {
+    fn drop(&mut self) {
+        crossterm::terminal::disable_raw_mode().expect("Unable to disable raw mode")
+    }
+}
+*/
+
 //
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // STOP SIGNAL
     let running = Arc::new(AtomicBool::new(true));
     let run_render_loop = running.clone();
 
+    // CROSSTERM
+    enable_raw_mode()?;
+    //let _clean_up = CleanUp;
+    
     // HANDLE CTRL+C
+    //let (tx, rx) = mpsc::channel();
+    //let tick_rate = Duration::from_millis(200);
+
     thread::spawn(move || {
-        for key in io::stdin().keys().flatten() {
-            // /* // TERMION
-            if let Key::Ctrl('c') = key {
-                running.store(false, Ordering::SeqCst);
-                break;
+        /*
+        let mut last_tick = Instant::now();
+
+        loop {
+            let timeout = tick_rate
+                .checked_sub(last_tick.elapsed())
+                .unwrap_or_else(|| Duration::from_secs(0));
+            
+            if event::poll(timeout).expect("poll works") {
+                if let CEvent::Key(key) = event::read().expect("can read events") {
+                    tx.send(Event::Input(key)).expect("can send events");
+                }
             }
-            // */
-            /* // CROSSTERM
+
+            if last_tick.elapsed() >= tick_rate {
+                if let Ok(_) = tx.send(Event::Tick) {
+                    last_tick = Instant::now();
+                }
+            }
+        }
+        */
+
+        // /* // OK
+        let event = read().unwrap(); //?
+        println!("Event: {:?}\r", event);
+
+        //if event == Event::Key(KeyCode::Esc.into()) {
+        if event ==  Event::Key(
+            KeyCode::Char('c').into(),
+            //code: KeyCode::Char('c'),
+            //modifiers: event::KeyModifiers::CONTROL,
+        ) {
+            running.store(false, Ordering::SeqCst);
+            //break; // in closure !!!
+            std::process::exit(1)
+        }
+        // */
+        
+        /*
+        if let Event::Key(event) = event::read().expect("Failed to read line") {
+            match event {
+                KeyEvent {
+                    code: KeyCode::Char('q'),
+                    modifiers: event::KeyModifiers::NONE,
+                    kind: crossterm::event::KeyEventKind::Press, // Repeat
+                    state: crossterm::event::KeyEventState {},
+                //} => break,
+                } => {
+                    std::process::exit(1)
+                },
+                _ => {
+                    //todo
+                }
+            }
+            println!("{:?}\r", event);
+        };
+        */
+
+        /*
+        let mut buf = [0; 1];
+
+        while io::stdin()
+            .read(&mut buf)
+            .expect("Failed to read line") == 1 && buf != [b'q']
+        {}
+        */
+
+        /*
+        let event = read()?;
+        
+        println!("Event: {:?}\r", event);
+
+        if event == Event::Key(KeyCode::Esc.into()) {
+        //if event == Event::Key(KeyCode::Modifier(ModifierKeyCode::LeftControl).into()) {
+            running.store(false, Ordering::SeqCst);
+            break;
+        }
+        
+        /*
+        for key in io::stdin().keys().flatten() {
+            /* // TERMION
             if let Key::Ctrl('c') = key {
                 running.store(false, Ordering::SeqCst);
                 break;
             }
             */
+            // CROSSTERM
+            if let KeyEven::Ctrl('c') = key {
+                running.store(false, Ordering::SeqCst);
+                break;
+            }
+            
         }
+        */
+        
+        */
     });
 
     // INITIALIZE TERMINAL APP
-    // /* // TERMION
+    /* // TERMION
     let stdout = io::stdout().into_raw_mode()?;
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    // */
+    */
 
-    /* // CROSSTERM
-    let stdout = io::stdout();
+    // CROSSTERM
+    let mut stdout = io::stdout();
+    execute!(stdout,
+             EnterAlternateScreen,
+             EnableMouseCapture,
+    )?;
+
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    */
 
     // PREPARE TERMINAL
     terminal.clear().unwrap();
@@ -228,7 +337,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     payload_parse(sender);
 
-    //let mut counter = 0;
     while run_render_loop.load(Ordering::SeqCst) {
         for channel_data in receiver.try_iter() {
             data.array = channel_data.array;
@@ -247,25 +355,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         data.truncate();
 
-        //render(&mut terminal, &data);
         render(&mut terminal, &mut data);
 
-        // test via timer
+        // todo! test via timer
         thread::sleep(UI_REFRESH_DELAY);
     }
 
+    // TERMION
     // RESET TERMINAL
-    let _ = terminal.clear();
-    let _ = terminal.show_cursor();
+    //let _ = terminal.clear();
+    //let _ = terminal.show_cursor();
+
+   
+    // CROSSTERM
+    // restore terminal
+    disable_raw_mode()?;
+
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
+
+    terminal.show_cursor()?;
 
     Ok(())
 }
 
 // terminal split to chunks + show data
-// 
-fn render(terminal: &mut Terminal<TermionBackend<RawTerminal<Stdout>>>,
-          data: &mut Data) {
-
+// TERMION 
+//fn render(terminal: &mut Terminal<TermionBackend<RawTerminal<Stdout>>>,
+// CROSSTERM
+fn render<B>(terminal: &mut Terminal<B>,
+             data: &mut Data)
+where
+    B: Backend,
+{
+    
     let draw_status = terminal
         // &mut Frame<'_, B>  where B: Backend
         .draw(|frame| {
@@ -363,7 +489,7 @@ fn render(terminal: &mut Terminal<TermionBackend<RawTerminal<Stdout>>>,
                         value: *value as UiValue,
                         boundary_variant,
                         color: pallete::temperature_to_color(
-                            &color_index,
+                            color_index.as_slice(),
                             *value as Temperature,
                         ),
                     }
@@ -717,7 +843,7 @@ where
                 show_canvas_bar(
                     if FLAG_SHOW_BAR_INDEX.eq(&true) { format!("{index}|{:02.02}", color.0) } else { format!("{:02.02}", color.0) },
                     Color::Cyan,
-                    Some(*color.1),
+                    Some(color.1),
                     frame,
                     *ch,
                 );      
@@ -880,9 +1006,9 @@ fn payload_parse(sender: mpsc::Sender<ChannelData>) {
 }
 
 //
-fn index_color_pallete<'a>(boundary_max: Temperature,
-                           boundary_min: Temperature,
-) -> ColorIndex<'a>
+fn index_color_pallete(boundary_max: Temperature,
+                       boundary_min: Temperature,
+) -> ColorIndex
 {
     let range = (boundary_max - boundary_min) / PALLETE.len() as Temperature;
 
@@ -893,10 +1019,9 @@ fn index_color_pallete<'a>(boundary_max: Temperature,
             // this keeps the lowest value inaccessible
             // so color will be COLOR_NONE_MAP
             // todo!() try harder
-            let temperature =
-                ((boundary_min as Temperature + (index + 1) as Temperature * range) / TEMPERATURE_INDEX_STEP).ceil() * TEMPERATURE_INDEX_STEP;
+            let temperature = ((boundary_min as Temperature + (index + 1) as Temperature * range) / TEMPERATURE_INDEX_STEP).ceil() * TEMPERATURE_INDEX_STEP;
             
-            (temperature, color)
+            (temperature, *color)
         })
-        .collect::<Vec<_>>()
+        .collect::<Vec<(Temperature, (u8, u8, u8))>>()
 }

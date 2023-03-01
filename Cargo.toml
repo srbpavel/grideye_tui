@@ -8,10 +8,12 @@ authors = ["prace@srbpavel.cz <prace@srbpavel.cz>"]
 log = "0.4"
 env_logger = "0.10.0"
 
-termion = "2.0.1"
-#crossterm = "0.26.0"
+#termion = "2.0.1"
+#tui = { version = "0.19", default-features = false, features = ['termion'] }
 
-tui = { version = "0.19", default-features = false, features = ['termion'] }
+crossterm = "0.26.1"
+#tui = { version = "0.19" }
+tui = { version = "0.19", default-features = false, features = ['crossterm'] }
 
 rumqttc = "0.10.0"
 chrono = "0.4.23"
