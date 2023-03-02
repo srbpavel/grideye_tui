@@ -200,8 +200,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // LAUNCH MEASUREMENT THREAD
     let mut data = Data::default();
     let (sender, receiver) = mpsc::channel();
-
-    payload_parse(sender);
+    mqtt_payload_parse(sender);
 
     while run_render_loop.load(Ordering::SeqCst) {
         for channel_data in receiver.try_iter() {
@@ -778,7 +777,7 @@ where
 }
 
 //
-fn payload_parse(sender: mpsc::Sender<ChannelData>) {
+fn mqtt_payload_parse(sender: mpsc::Sender<ChannelData>) {
     thread::spawn(move || {
         let mqtt_uniq_id = format!("{}_{}",
                                    MQTT_CLIENT_ID,
