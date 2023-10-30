@@ -1,0 +1,48 @@
+#!!! value need's to be same as package.name
+#!!! otherwise default values from Struct Config
+#!!! if syntax is wrong it will also use Struct default values
+[grideye_tui]
+app_title = "rust EPS32 + GridEye 8x8 --> TUI"
+
+datetime_timezone = "utc"
+#datetime_timezone = "local"
+
+#verify errors such wrong host/topic/client_id duplicity ...
+mqtt_broker_url = "192.168.0.103"
+mqtt_user = ""
+mqtt_pass = ""
+mqtt_port = 1883
+mqtt_topic_base = "/grid_eye"
+#mqtt_topic_error_suffix = "error"
+mqtt_topic_error_suffix = "common_log"
+mqtt_topic_wildcard = "#"
+
+mqtt_client_id = "grideye_tui"
+
+topic_delimiter = "/"
+# /grid_eye/king/0e4dabce29ba41f79eb5ee840bf6e283
+# split -> ["", "grid_eye", "king", "0e4dabce29ba41f79eb5ee840bf6e283"]
+#
+# /grid_eye/simulator/bba19ba928ce43fd9450af2af7d2eb8c
+# split -> ["", "grid_eye", "simulator", "bba19ba928ce43fd9450af2af7d2eb8c"]
+
+topic_parts_count = 4 #3 + 1
+
+flag_show_bar_index = true #false
+# heatmap via canvas value
+flag_show_index = true #false
+flag_show_color = false
+# heatmap via table
+flag_show_map_table_index = false
+
+alarma_diff = 5.0
+
+default_empty_topic = "DEFAULT_EMPTY_TOPIC"
+default_empty_uuid = "DEFAULT_EMPTY_UUID"
+
+# miliseconds
+duration_limit_device_remove = 10000
+duration_limit_device_remove_warn = 5000
+duration_limit_device_unknown = 1000
+
+log_file = "/home/conan/git/srbpavel/grideye_tui/grideye_error_msg.log"
