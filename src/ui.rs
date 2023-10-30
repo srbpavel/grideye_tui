@@ -1,19 +1,39 @@
+#[allow(unused)]
+use crate::info;
+#[allow(unused)]
+use crate::warn;
+#[allow(unused)]
+use crate::error;
+
+use crate::config;
+use crate::config::Config;
+use crate::config::DateTime;
+
 use crate::PALLETE;
 
 use crate::pallete;
 use crate::pallete::ColorIndex;
 use crate::pallete::ColorRGB;
 
-use crate::mqtt;
+use crate::mqtt::Payload;
+use crate::mqtt::Array;
+use crate::mqtt::Temperature;
+//use crate::mqtt::CommonMsg;
+use crate::mqtt::CommonLog;
 use crate::mqtt::LEN;
 use crate::mqtt::POW;
-use crate::mqtt::Temperature;
-use crate::mqtt::Array;
 
+//use crate::app;
 use crate::app::App;
+
+use crate::run::Devices;
+use crate::run::Device2Tab;
+
+use crate::alarma::Alarma;
 
 use std::collections::VecDeque;
 use std::time::Duration;
+//use std::sync::mpsc;
 
 use tui::Frame;
 use tui::backend::Backend;
@@ -25,7 +45,6 @@ use tui::layout::Layout;
 use tui::layout::Rect;
 use tui::style::Color;
 use tui::style::Style;
-use tui::style::Modifier;
 use tui::symbols::Marker;
 use tui::text::Span;
 use tui::text::Spans;
@@ -42,24 +61,482 @@ use tui::widgets::Row;
 use tui::widgets::Tabs;
 use tui::widgets::Table;
 
-
 // 1000ms / 25ms = 40fps/Hz
 pub const UI_REFRESH_DELAY: Duration = Duration::from_millis(25);
+
 pub const DATA_CAPACITY: usize = 100;
+pub const DATA_ALARMA_CAPACITY: usize = 3;
+
 const TEMPERATURE_ERROR_SLICE_VALUE: f32 = 99.0;
 const TEMPERATURE_DEFAULT_VALUE: f32 = 126.0;
 const TEMPERATURE_MAX: f32 = -55.0;
 const TEMPERATURE_MIN: f32 = 125.0;
 const TEMPERATURE_BOUNDARY_OFFSET: f32 = 5.0;
 pub const TEMPERATURE_INDEX_STEP: f32 = 0.25; // todo!() verify sensor resolution
-const COLOR_NONE_MAP: Color = Color::Black;
-const COLOR_NONE_BAR: Color = Color::Magenta;
-const FLAG_SHOW_INDEX: bool = false;
-const FLAG_SHOW_BAR_INDEX: bool = false;
-const FLAG_SHOW_COLOR: bool = false;
-const BAR_LEN: usize = PALLETE.len() / 17;
+
+const COLOR_TAB_TEXT: Color = Color::Green;
+const COLOR_TAB_TEXT_SELECTED: Color = Color::Yellow;
+const COLOR_VALUES_BG_BOUNDARY_MIN: Color = Color::Magenta;
+const COLOR_VALUES_BG_BOUNDARY_MAX: Color = Color::Red;
+const COLOR_VALUES_TEXT: Color = Color::Gray;
+const COLOR_BAR_TEXT: Color = Color::Cyan;
+const COLOR_MAP_TABLE_TEXT: Color = Color::Cyan;
+const COLOR_STATUS_TEXT: Color = Color::DarkGray;
+const COLOR_STATUS_BG: Color = Color::Black;
+const COLOR_STATUS_ON_RECEIVE: Color = Color::Green;
+const COLOR_STATUS_ON_PAUSE: Color = Color::Red;
+const COLOR_STATUS_UNKNOWN: Color = Color::LightMagenta;
+const COLOR_STATUS_TO_REMOVE: Color = Color::LightCyan;
+const COLOR_NONE_MAP: Color = Color::Cyan;
+const COLOR_NONE_MAP_CANVAS: Color = Color::Green;
+const COLOR_NONE_MAP_VALUES: Color = Color::Black;
+
+// try harder -> as this number can hide bar minimal color/value
+const BAR_LEN: usize = PALLETE.len() / 19;
+
+const STATUS_INIT: &str = "init";
+const STATUS_ON_PAUSE: &str = "on pause";
+const STATUS_RECEIVING: &str = "receiving";
+const STATUS_UNKNOWN: &str = "unknown";
+const STATUS_TO_REMOVE: &str = "to_remove";
 
 type UiValue = f64;
+
+pub struct Render {
+    pub app: App,
+    pub devices: Devices,
+    pub dynamic_tabs: Vec<Device2Tab>,
+    pub common_log: CommonLog,
+}
+
+impl Render {
+    //
+    pub fn remove_device(&mut self,
+                         device: &String,
+    ) {
+        // remove app tab
+        self
+            .app
+            .tabs
+            .remove(device);
+        
+        // remove dynamic tab
+        self
+            .dynamic_tabs
+            .retain(|t| !t.eq(
+                &Device2Tab::Dynamic(
+                    // todo(!) try harder
+                    String::from(device)
+                )
+            ));
+    }
+
+    //
+    pub fn insert_device(&mut self,
+                         device: Device2Tab,
+    ) {
+        // dynamic tab
+        self.dynamic_tabs.push(device.clone());
+
+        // app tab
+        self.app.push_title(
+            device.get_tab()
+        )
+    }
+    
+    
+    /* // cannot use while render.devices.iter_mut()
+    //
+    // no title but tab
+    pub fn insert_title(&mut self,
+                        title: String,
+    ) {
+        self.app.push_title(app::Tab {
+            name: title,
+            variant: app::TabVariant::Fixed,
+        });
+    }
+
+    //
+    pub fn insert_tab(&mut self,
+                      tab: Device2Tab,
+    ) {
+        self.dynamic_tabs.push(tab);
+    }
+    */
+    
+    //
+    pub fn new(app: App) -> Self {
+        Self {
+            app,
+            devices: std::collections::HashMap::new(),
+            dynamic_tabs: vec![],
+            common_log: CommonLog::default(),
+        }
+    }
+    
+    //
+    // here we need data for specific TOPIC
+    //
+    fn draw_dynamic_tab<B>(&mut self,
+                           frame: &mut Frame<B>,
+                           area: Rect,
+                           index: usize,
+    )
+    where
+        B: Backend,
+    {
+   
+        // here we need to read index number and connect it with hashmap key
+        let topic = match index {
+            // todo!() - try harder maybe enum as in previous match
+            //i @ 1.. => {
+            i @ 2.. => {
+                //match tabs.get(i - 1) {
+                match self.dynamic_tabs.get(i - 2) {
+                    Some(tab) => {
+                        match tab {
+                            Device2Tab::Dynamic(name) => name,
+                            // ? verify
+                            Device2Tab::Fixed(name) => name,
+                        }
+                    },
+                    // todo(!) -> this will not render anything !!!
+                    None => self.app.config.mqtt_topic_base,
+                }
+            },
+            _ => self.app.config.mqtt_topic_base,
+        };
+        
+        // via topic match
+        if let Some(single_device) = self.devices.get(topic) {
+            let color_index = pallete::index_color_pallete(
+                single_device.boundary_max.value,
+                single_device.boundary_min.value,
+            );
+            
+            let pixel_array = single_device.pixels(&color_index);
+            
+            // --> top (graph + bar) + bottom (grid + map + log)
+            let chunks = Layout::default()
+                .direction(Vertical)
+                .constraints([
+                    Constraint::Percentage(75),
+                    Constraint::Percentage(25),
+                ])
+                .split(area);
+        
+            // top --> left graph + right bar
+            let top = Layout::default()
+                .direction(Horizontal)
+                .constraints([
+                    Constraint::Percentage(94),
+                    Constraint::Percentage(6),
+                ])
+                .split(chunks[0]);
+            
+            // bottom --> left (value) + right (color + log)
+            let chunks_bottom = split_area(chunks[1], Horizontal, 2);
+            
+            // bottom --> right --> color map + log
+            let chunks_right = Layout::default()
+                .direction(Horizontal)
+                .constraints([
+                    Constraint::Percentage(30),
+                    Constraint::Percentage(70),
+                ].as_ref())
+                .split(chunks_bottom[1]);
+            
+            // bottom --> left --> value --> LEN * LEN canvas
+            let chunks_lines_left = split_area(chunks_bottom[0], Vertical, LEN);
+            // bottom --> right --> color_map --> LEN * LEN canvas
+            let chunks_lines_right = split_area(chunks_right[0], Vertical, LEN);
+            
+            // max + min graph
+            draw_chart(
+                "Graph",
+                single_device,
+                COLOR_VALUES_BG_BOUNDARY_MAX,
+                COLOR_VALUES_BG_BOUNDARY_MIN,
+                frame,
+                top[0]
+            );
+            
+            // heat bar
+            draw_bar_as_tab(&self.app.config,
+                            &color_index,
+                            top[1],
+                            frame, 
+            );
+        
+            // grid + heatmap via single iter
+            draw_map_and_values(&self.app.config,
+                                chunks_lines_left,
+                                chunks_lines_right,
+                                pixel_array,
+                                frame,
+            );
+            
+            // logs
+            let alarma = single_device.logs();
+            
+            draw_logs(
+                &alarma,
+                COLOR_STATUS_TEXT,
+                COLOR_STATUS_BG,
+                frame,
+                chunks_right[1],
+            );
+        }
+    }
+    
+    // error log
+    //
+    fn draw_error_log_topic<B>(&mut self,
+                               frame: &mut Frame<B>,
+                               area: Rect,
+                               color_text: Color,
+                               color_area: Color,
+    )
+    where
+        B: Backend,
+    {
+        let items =
+            self.common_log.logs
+            .iter()
+            .rev()
+            .map(|log| ListItem::new(format!("{}", log))
+                 .style(
+                     Style::default()
+                         .fg(color_text)
+                         .bg(color_area)
+                 )
+            )
+            .collect::<Vec<_>>();
+        
+        let list = List::new(items)
+            .block(Block::default()
+                   .title("Error_Logs")
+                   .borders(Borders::ALL)
+            );
+        
+        frame.render_widget(list, area);
+    }
+    
+    // all heatmaps in one tab
+    //
+    // for now the upper limit is 3 sensors/heatmaps
+    //
+    // first we need to divide space
+    // then collect data for each window
+    // render
+    // each topic has it's own temperature range!!!
+    //
+    fn draw_tab_heatmap_all<B>(&mut self,
+                               frame: &mut Frame<B>,
+                               area: Rect,
+    )
+    where
+        B: Backend,
+    {
+        let chunks = split_area(area,
+                                Direction::Horizontal,
+                                self.devices.len(),
+        );
+        
+        let mut device_counter = 0;
+        
+        self.devices
+            .iter()
+            .for_each(|(name, single_device)| {
+                let chunks_inner = Layout::default()
+                    .direction(Vertical)
+                    .constraints([
+                        //heatmap as table
+                        Constraint::Percentage(40),
+                        //heatmap via canvas
+                        Constraint::Percentage(40),
+                        //logs
+                        Constraint::Percentage(20),
+                    ])
+                    // ### but here we ask for index 3, but we have only [0,1,2]
+                    //.split(chunks[device_counter]);
+                    // /*
+                    .split(
+                        // this can overflow
+                        //chunks[device_counter]
+                        // todo!() -> hot_fix
+                        if chunks.len() <= device_counter {
+                            chunks[0] //todo!() -> test such cases
+                        } else {
+                            chunks[device_counter]
+                        }
+                    );
+                    // */
+                
+                let color_index = pallete::index_color_pallete(
+                    single_device.boundary_max.value,
+                    single_device.boundary_min.value,
+                );
+                
+                let pixel_array = single_device.pixels(&color_index);
+                
+                // top map_as table
+                // todo!() -> watch chunk index as this can panic/crash
+                draw_map_as_table(&self.app.config,
+                                  chunks_inner[0], 
+                                  pixel_array.clone(),
+                                  frame,
+                                  name,
+                );
+                
+                // make border here also + title
+                // heatmap_only
+                draw_map_only(chunks_inner[1], 
+                              pixel_array.clone(),
+                              frame,
+                );
+
+                // logs
+                let alarma = single_device.logs();
+                
+                draw_logs(
+                    &alarma,
+                    COLOR_STATUS_TEXT,
+                    COLOR_STATUS_BG,
+                    frame,
+                    chunks_inner[2],
+                );
+                
+                device_counter += 1;
+            });
+    }
+    
+    // learning sample + tab with fixed data --> for instance "colors"
+    //
+    fn draw_tab_fixed<B>(&mut self,
+                         frame: &mut Frame<B>,
+                         area: Rect)
+    where
+        B: Backend,
+    {
+
+        // divide into left + right
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Ratio(1, 2),
+                Constraint::Ratio(1, 2),
+            ])
+            .split(area);
+        
+        let colors = [
+            Color::Reset,
+            Color::Black,
+            Color::Red,
+            Color::Green,
+            Color::Yellow,
+            Color::Blue,
+            Color::Magenta,
+            Color::Cyan,
+            Color::Gray,
+            Color::DarkGray,
+            Color::LightRed,
+            Color::LightGreen,
+            Color::LightYellow,
+            Color::LightBlue,
+            Color::LightMagenta,
+            Color::LightCyan,
+            Color::White,
+        ];
+        
+        let items: Vec<Row> = colors
+            .iter()
+            .map(|c| {
+                let cells = vec![
+                    Cell::from(Span::raw(format!("{:?}: ", c))),
+                    Cell::from(Span::styled("Foreground", Style::default().fg(*c))),
+                    Cell::from(Span::styled("Background", Style::default().bg(*c))),
+                ];
+                
+                Row::new(cells)
+            })
+            .collect();
+        
+        let table = Table::new(items)
+            .block(Block::default()
+                   .title("Colors")
+                   .borders(Borders::ALL)
+            )
+            .widths(&[
+                Constraint::Ratio(1, 3),
+                Constraint::Ratio(1, 3),
+                Constraint::Ratio(1, 3),
+            ]);
+        
+        frame.render_widget(table, chunks[0]);
+    }
+    
+    //
+    pub fn draw<B>(&mut self,
+                   frame: &mut Frame<B>,
+    )
+    where B: Backend
+    {
+        // main window --> top tabs + bottom rest
+        let chunks = Layout::default()
+            .direction(Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(0)
+            ].as_ref())
+            .split(frame.size());
+
+        let tab_titles = self.app
+            .tabs
+            .titles
+            .iter()
+            .map(|t| Spans::from(Span::styled(t.render(),
+                                              Style::default().fg(COLOR_TAB_TEXT))))
+            .collect();
+        
+        let tabs = Tabs::new(tab_titles)
+            .block(Block::default()
+                   .title(self.app.config.app_title)
+                   .borders(Borders::ALL)
+            )
+            .highlight_style(Style::default().fg(COLOR_TAB_TEXT_SELECTED))
+            .select(self.app.tabs.index);
+        
+        // draw tabs
+        frame.render_widget(tabs, chunks[0]);
+        
+        // draw rest under
+        match self.app.tabs.index {
+            // static -> table with colors
+            0 => self.draw_tab_fixed(frame, chunks[1]),
+            // static -> all heatmap side by side
+            1 => self.draw_tab_heatmap_all(frame,
+                                           chunks[1],
+            ),
+            // fixed -> error_log
+            2 => self.draw_error_log_topic(frame,
+                                           chunks[1],
+                                           COLOR_STATUS_TEXT,
+                                           COLOR_STATUS_BG,
+            ),
+            // dynamic tabs as topics
+            //
+            // todo!() -> maybe change to enum also as index can move due to fixed!!!
+            index @ 3.. => self.draw_dynamic_tab(frame,
+                                                 chunks[1],
+                                                 index,
+            ),
+            // rest
+            _ => {}
+        };
+    }
+}
 
 enum ShowIndex {
     True,
@@ -75,6 +552,30 @@ enum ShowColor {
 pub enum BoundaryVariant {
     Max,
     Min,
+}
+
+#[derive(Debug)]
+pub enum Status {
+    Init,
+    OnPause,
+    Receiving,
+    Unknown,
+    ToRemove,
+}
+
+impl std::fmt::Display for Status {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f,
+               "status: {}",
+               match self {
+                   Self::Init => {STATUS_INIT},
+                   Self::OnPause => {STATUS_ON_PAUSE},
+                   Self::Receiving => {STATUS_RECEIVING},
+                   Self::Unknown => {STATUS_UNKNOWN},
+                   Self::ToRemove => {STATUS_TO_REMOVE},
+               },
+        )
+    }
 }
 
 pub struct Boundary {
@@ -104,57 +605,139 @@ struct Pixel {
     color: Option<ColorRGB>,
 }
 
-//
-// data for rendering
-//
-//pub struct Data<'msg> {
-pub struct Data {
-    capacity: usize,
-    array: Array,
-    boundary_max: Boundary,
-    boundary_min: Boundary,
-    diff: Temperature,
-    //log_messages: VecDeque<&'msg str>,
+pub type Topic = String;
+pub type Uuid = String;
+
+// measurement data for rendering
+pub struct Device {
+    pub status: Status,
+    // incomming topic
+    // /grid_eye/queen/a4d1d8c1bc884b4abbbcf2b7a39a235a
+    // 
+    // /grid_eye/queen
+    pub topic: Topic,
+    // a4d1d8c1bc884b4abbbcf2b7a39a235a
+    pub uuid: Uuid,
+    pub array: Array,
+    pub boundary_max: Boundary,
+    pub boundary_min: Boundary,
+    pub diff: Temperature,
+    pub datetime_init: DateTime,
+    pub datetime_last: DateTime,
+    pub alarma: Option<Alarma>,
+    pub alarma_history: VecDeque<Alarma>,
 }
 
-//impl<'msg> Default for Data<'msg> {
-impl Default for Data {
-    fn default() -> Self {
+impl Device {
+    //
+    pub fn is_active(&mut self,
+                     limit: chrono::Duration,
+    ) -> bool {
+        (config::now() - self.datetime_last) < limit
+    }
+    
+    //
+    // do not forget machine and simulator difference in topic !!!
+    //
+    pub fn verify_status(&mut self,
+                         config: &Config,
+                         devices_to_remove: &mut Vec<String>,
+                         //_common_sender: mpsc::Sender<CommonMsg>,
+    ) {
+        // todo(!) -> try harder / enum ???
+        if !self.is_active(config.duration_limit_device_remove()) {
+            devices_to_remove.push(self.topic.clone());
+        } else if !self.is_active(config.duration_limit_device_remove_warn()) {
+            self.status = Status::ToRemove;
+
+            /* ONLY ONCE
+            //display msg in log
+            error_sender
+                .send(
+                    Log::record(format!("device will be deleted: {}",
+                                        self.topic,
+                    ))
+                )
+            .unwrap();
+            */
+        } else if !self.is_active(config.duration_limit_device_unknown()) {
+            /* ONLY ONCE
+            //display msg in log
+            error_sender
+                .send(
+                    Log::record(format!("device not online: {}",
+                                        self.topic,
+                    ))
+                )
+                .unwrap();
+            */
+            self.status = Status::Unknown;
+        }
+    }
+
+    //
+    pub fn init(config: &Config) -> Self {
+        let now = config::now();
+
         Self {
-            capacity: DATA_CAPACITY,
+            status: Status::Init,
+            topic: String::from(config.default_empty_topic),
+            uuid: String::from(config.default_empty_uuid),
             array: [TEMPERATURE_DEFAULT_VALUE; POW],
             boundary_max: Boundary::new(BoundaryVariant::Max),
             boundary_min: Boundary::new(BoundaryVariant::Min),
             diff: 0 as Temperature,
-            //log_messages: VecDeque::default(),
+            datetime_init: now,
+            datetime_last: now,
+            alarma: None,
+            alarma_history: VecDeque::default(), 
         }
-    }
-}
-
-//impl<'msg> Data<'msg> {
-impl Data {
-    pub fn truncate(&mut self) {
-        self.boundary_min.history.truncate(self.capacity);
-        self.boundary_max.history.truncate(self.capacity);
     }
 
     //
-    pub fn fill(&mut self,
-                channel_data: mqtt::Payload,
-    ) {
+    pub fn truncate(&mut self) {
+        // historic data for min/max running graph
+        self.boundary_min.history.truncate(DATA_CAPACITY);
+        self.boundary_max.history.truncate(DATA_CAPACITY);
+        // logs len
+        self.alarma_history.truncate(DATA_ALARMA_CAPACITY);
+    }
 
+    //
+    // Payload -> Data
+    //
+    pub fn fill(&mut self,
+                config: &Config,
+                channel_data: Payload,
+                topic: Topic,
+                uuid: Uuid,
+    ) {
+        self.status = Status::Receiving;
+
+        // if sensor machine has booted we have new uuid
+        if !self.uuid.eq(&uuid) {
+            self.status = Status::Init;
+            self.datetime_init = channel_data.datetime;
+        }
+
+        self.datetime_last = channel_data.datetime;
+        
+        self.topic = topic;
+        self.uuid = uuid;
+        
         self.array = channel_data.array;
+
+        self.boundary_min.history.push_front(channel_data.min.value);
+        self.boundary_min.index = channel_data.min.index;
+        self.boundary_min.value = channel_data.min.value;
+
+        self.boundary_max.history.push_front(channel_data.max.value);
+        self.boundary_max.index = channel_data.max.index;
+        self.boundary_max.value = channel_data.max.value;
         
-        // DEFAULT dynamic
-        self.boundary_min.history.push_front(channel_data.min_value);
-        self.boundary_min.index = channel_data.min_index;
-        self.boundary_min.value = channel_data.min_value;
-        
-        self.boundary_max.history.push_front(channel_data.max_value);
-        self.boundary_max.index = channel_data.max_index;
-        self.boundary_max.value = channel_data.max_value;
-        
-        self.diff = channel_data.max_value - channel_data.min_value;
+        self.diff = channel_data.max.value - channel_data.min.value;
+
+        self.alarma(config);
     }
 
     //
@@ -174,30 +757,115 @@ impl Data {
                     index: index as UiValue,
                     value: *value as UiValue,
                     boundary_variant,
-                    color: pallete::temperature_to_color(
-                        color_index.as_slice(),
-                        *value as Temperature,
+                    color: pallete::temperature_to_color(color_index.as_slice(),
+                                                         *value as Temperature,
                     ),
                 }
             })
             .collect::<Vec<_>>()
     }
-}
 
+    //
+    fn logs(&self) -> Vec<String> {
+        let logs_topic = format!("topic: {}", self.topic);
+        let logs_uuid = format!("uuid: {}", self.uuid);
+
+        let logs_init = format!("init: {}", self.datetime_init);
+        let logs_last = format!("last: {}", self.datetime_last);
+
+        let uptime = self.datetime_last - self.datetime_init;
+        let logs_uptime_minutes =
+            format!("uptime: {:?} minutes",
+                    uptime.num_minutes(),
+            );
+
+        let alarma = match &self.alarma {
+            Some(a) => {
+                format!("alarma: {:02.02}-{:02.02} -> {:02.02}",
+                        a.min,
+                        a.max,
+                        a.diff,
+                )
+            },
+            None => {
+                //format!("alarma: None")
+                String::from("alarma: None")
+            },
+        };
+       
+        let mut logs: Vec<String> = vec![
+            logs_topic,
+            logs_uuid,
+            self.status.to_string(),
+            logs_init,
+            logs_last,
+            logs_uptime_minutes,
+            alarma,
+        ];
+
+        let alarma_history = self.alarma_history
+            .iter()
+            .map(|a| {
+                format!(" {:?} / {:02.02}",
+                        a.datetime,
+                        a.diff,
+                )
+            })
+            .collect::<Vec<String>>();
+
+        logs.extend(alarma_history);
+
+        logs
+    }
+
+    // actual alarma
+    //
+    pub fn alarma(&mut self,
+                  config: &Config,
+    ) {
+        if self.diff >= config.alarma_diff {
+            let alarma = Alarma {
+                max: self.boundary_max.value,
+                min: self.boundary_min.value,
+                diff: self.diff, 
+                datetime: self.datetime_last, 
+            };
+            
+            self.alarma = Some(alarma.clone());
+            self.alarma_history.push_front(alarma);
+        } else {
+            self.alarma = None;
+        }
+    }
+} 
+
+/* OBS ?
 // our inital frame
 //
 pub fn draw<B>(frame: &mut Frame<B>,
                app: &mut App,
-               data: &mut Data,
+               devices: &mut Devices,
+               dynamic_tabs: &mut Vec<Device2Tab>,
+               error_log: &mut ErrorLog,
 )
 where
     B: Backend
 {
+    /*
+    let mut render = Render {
+        frame: frame,
+        app: &mut app,
+        devices: &mut devices,
+        dynamic_tabs: &mut dynamic_tabs,
+        error_log: &mut error_log,
+    };
+    */
+    
     // main window --> top tabs + bottom rest
     let chunks = Layout::default()
         .direction(Vertical)
         .constraints([
-            Constraint::Length(2),
+            Constraint::Length(3),
             Constraint::Min(0)
         ].as_ref())
         .split(frame.size());
@@ -206,152 +874,278 @@ where
         .tabs
         .titles
         .iter()
-        .map(|t| {
-            Spans::from(Span::styled(*t, Style::default().fg(Color::Green)))
-        })
+        .map(|t| Spans::from(Span::styled(t.render(),
+                                          Style::default().fg(COLOR_TAB_TEXT))))
         .collect();
-
+    
     let tabs = Tabs::new(tab_titles)
         .block(Block::default()
-               .title(app.title)
-               // todo(!) -> study + fix
-               // !!! this hides TAB names
-               //.borders(Borders::ALL)
+               .title(app.config.app_title)
+               .borders(Borders::ALL)
         )
-        .highlight_style(Style::default().fg(Color::Yellow))
+        .highlight_style(Style::default().fg(COLOR_TAB_TEXT_SELECTED))
         .select(app.tabs.index);
     
     // draw tabs
     frame.render_widget(tabs, chunks[0]);
-    
+
     // draw rest under
     match app.tabs.index {
-        0 => draw_first_tab(frame, app, chunks[1], data),
-        1 => draw_second_tab(frame, app, chunks[1]),
-        2 => draw_third_tab(frame, app, chunks[1]),
-         _ => {}
+        // static -> table with colors
+        //0 => draw_tab_fixed(frame, chunks[1]),
+        0 => {
+            //Screen::Static(Static::Color).render();
+            /* pokus
+            Screen::Static(ScreenColor {
+                frame: frame,
+                area: chunks[1],
+            }).render();
+            */
+            
+            draw_tab_fixed(frame, chunks[1])
+        },
+        // static -> all heatmap side by side
+        1 => draw_tab_heatmap_all(frame,
+                                  chunks[1],
+                                  devices,
+                                  app,
+        ),
+        // fixed -> error_log
+        2 => draw_error_log_topic(frame,
+                                  COLOR_STATUS_TEXT,
+                                  COLOR_STATUS_BG,
+                                  chunks[1],
+                                  error_log,
+        ),
+        // dynamic tabs as topics
+        //
+        // todo!() -> maybe change to enum also as index can move due to fixed!!!
+        index @ 3.. => draw_dynamic_tab(frame,
+                                        chunks[1],
+                                        devices,
+                                        index,
+                                        dynamic_tabs,
+                                        app,
+        ),
+        // rest
+        _ => {}
     };
 }
+*/
 
+/*
 //
-fn draw_first_tab<B>(frame: &mut Frame<B>,
-                     _app: &mut App,
-                     area: Rect,
-                     data: &Data)
+// here we need data for specific TOPIC
+//
+fn draw_dynamic_tab<B>(frame: &mut Frame<B>,
+                       area: Rect,
+                       devices: &mut Devices,
+                       index: usize,
+                       tabs: &mut Vec<Device2Tab>,
+                       app: &mut App,
+)
 where
     B: Backend,
 {
-    let color_index = pallete::index_color_pallete(
-        data.boundary_max.value,
-        data.boundary_min.value,
-    );
-
-    let pixel_array = data.pixels(&color_index);
+   
+    // here we need to read index number and connect it with hashmap key
+    let topic = match index {
+        // todo!() - try harder maybe enum as in previous match
+        //i @ 1.. => {
+        i @ 2.. => {
+            //match tabs.get(i - 1) {
+            match tabs.get(i - 2) {
+                Some(tab) => {
+                    match tab {
+                        Device2Tab::Dynamic(name) => name,
+                    }
+                },
+                // todo(!) -> this will not render anything !!!
+                None => app.config.mqtt_topic_base,
+            }
+        },
+        _ => app.config.mqtt_topic_base,
+    };
     
-    // --> top (graph + bar) + bottom (grid + map + log)
-    let chunks = Layout::default()
-        .direction(Vertical)
-        .constraints([
-            // /*
-            Constraint::Percentage(80),
-            Constraint::Percentage(20),
-            // */
-            /*
-            Constraint::Ratio(1, 2),
-            Constraint::Ratio(1, 2),
-            */
-            /*
-            Constraint::Length(2),
-            Constraint::Min(0)
-            */
-        ])
-        .split(area);
+    // via topic match
+    if let Some(single_device) = devices.get(topic) {
+        let color_index = pallete::index_color_pallete(
+            single_device.boundary_max.value,
+            single_device.boundary_min.value,
+        );
+        
+        let pixel_array = single_device.pixels(&color_index);
+        
+        // --> top (graph + bar) + bottom (grid + map + log)
+        let chunks = Layout::default()
+            .direction(Vertical)
+            .constraints([
+                Constraint::Percentage(75),
+                Constraint::Percentage(25),
+            ])
+            .split(area);
+        
+        // top --> left graph + right bar
+        let top = Layout::default()
+            .direction(Horizontal)
+            .constraints([
+                Constraint::Percentage(94),
+                Constraint::Percentage(6),
+            ])
+            .split(chunks[0]);
+        
+        // bottom --> left (value) + right (color + log)
+        let chunks_bottom = split_area(chunks[1], Horizontal, 2);
+        
+        // bottom --> right --> color map + log
+        let chunks_right = Layout::default()
+            .direction(Horizontal)
+            .constraints([
+                Constraint::Percentage(30),
+                Constraint::Percentage(70),
+            ].as_ref())
+            .split(chunks_bottom[1]);
+        
+        // bottom --> left --> value --> LEN * LEN canvas
+        let chunks_lines_left = split_area(chunks_bottom[0], Vertical, LEN);
+        // bottom --> right --> color_map --> LEN * LEN canvas
+        let chunks_lines_right = split_area(chunks_right[0], Vertical, LEN);
+        
+        // max + min graph
+        draw_chart(
+            "Graph",
+            single_device,
+            COLOR_VALUES_BG_BOUNDARY_MAX,
+            COLOR_VALUES_BG_BOUNDARY_MIN,
+            frame,
+            top[0]
+        );
+        
+        // heat bar
+        draw_bar_as_tab(&app.config,
+                        &color_index,
+                        top[1],
+                        frame, 
+        );
+        
+        // grid + heatmap via single iter
+        draw_map_and_values(&app.config,
+                            chunks_lines_left,
+                            chunks_lines_right,
+                            pixel_array,
+                            frame,
+        );
 
-    // top --> left graph + right bar
-    let top = Layout::default()
-        .direction(Horizontal)
-        .constraints([
-            Constraint::Percentage(97),
-            Constraint::Percentage(3),
-            /*
-            Constraint::Ratio(1, 2),
-            Constraint::Ratio(1, 2),
-            */
-            /*
-            Constraint::Length(2),
-            Constraint::Min(0)
-            */
-        ])
-        .split(chunks[0]);
-
-    // top --> right --> heat bar with many many canvas
-    let chunks_top_right_bar = split_area(top[1],
-                                          Vertical,
-                                          BAR_LEN,
-    );
-    
-    // bottom --> left (value) + right (color + log)
-    let chunks_bottom = split_area(chunks[1], Horizontal, 2);
-
-    // bottom --> right --> color map + log
-    let chunks_right = Layout::default()
-        .direction(Horizontal)
-        .constraints([
-            Constraint::Percentage(30),
-            Constraint::Percentage(70),
-        ].as_ref())
-        .split(chunks_bottom[1]);
-
-    // bottom --> left --> value --> LEN * LEN canvas
-    let chunks_lines_left = split_area(chunks_bottom[0], Vertical, LEN);
-    // bottom --> right --> color_map --> LEN * LEN canvas
-    let chunks_lines_right = split_area(chunks_right[0], Vertical, LEN);
-    
-    // max+min graph
-    draw_chart(
-        "", //"chart graph",
-        data,
-        Color::Red,
-        Color::Cyan,
-        frame,
-        top[0]
-    );
-
-    // heat bar
-    draw_bar(&color_index,
-             chunks_top_right_bar,
-             frame,
-    );
-    
-    // grid + heatmap via single iter
-    draw_map(chunks_lines_left,
-             chunks_lines_right,
-             pixel_array,
-             frame,
-    );
-
-    // log info
-    //draw_status(&data.log_messages,
-    draw_status(["a1", "b2", "c3", "d4", "e5"].as_slice(),
-                Color::DarkGray,
-                Color::Black,
-                frame,
-                chunks_right[1],
-    );
+        // logs
+        let alarma = single_device.logs();
+        
+        draw_logs(
+            &alarma,
+            COLOR_STATUS_TEXT,
+            COLOR_STATUS_BG,
+            frame,
+            chunks_right[1],
+        );
+    }
 }
+*/
 
+/*
+// all heatmaps in one tab
 //
-fn draw_second_tab<B>(_frame: &mut Frame<B>,
-                      _app: &mut App,
-                      _area: Rect)
+// for now the upper limit is 3 sensors/heatmaps
+//
+// first we need to divide space
+// then collect data for each window
+// render
+// each topic has it's own temperature range!!!
+//
+fn draw_tab_heatmap_all<B>(frame: &mut Frame<B>,
+                           area: Rect,
+                           devices: &mut Devices,
+                           app: &mut App,
+)
 where
     B: Backend,
-{}
+{
+    let chunks = split_area(area,
+                            Direction::Horizontal,
+                            devices.len(),
+    );
 
-// learning sample
+    let mut device_counter = 0;
+
+    devices
+        .iter()
+        .for_each(|(name, single_device)| {
+            let chunks_inner = Layout::default()
+                .direction(Vertical)
+                .constraints([
+                    //heatmap as table
+                    Constraint::Percentage(40),
+                    //heatmap via canvas
+                    Constraint::Percentage(40),
+                    //logs
+                    Constraint::Percentage(20),
+                ])
+                // ### but here we ask for index 3, but we have only [0,1,2]
+                //.split(chunks[device_counter]);
+                // /*
+                .split(
+                    // this can overflow
+                    //chunks[device_counter]
+                    // todo!() -> hot_fix
+                    if chunks.len() <= device_counter {
+                        chunks[0] //todo!() -> test such cases
+                    } else {
+                        chunks[device_counter]
+                    }
+                );
+                // */
+
+            let color_index = pallete::index_color_pallete(
+                single_device.boundary_max.value,
+                single_device.boundary_min.value,
+            );
+            
+            let pixel_array = single_device.pixels(&color_index);
+
+            // top map_as table
+            // todo!() -> watch chunk index as this can panic/crash
+            draw_map_as_table(&app.config,
+                              chunks_inner[0], 
+                              pixel_array.clone(),
+                              frame,
+                              name,
+            );
+
+            // make border here also + title
+            // heatmap_only
+            draw_map_only(chunks_inner[1], 
+                          pixel_array.clone(),
+                          frame,
+            );
+
+            // logs
+            let alarma = single_device.logs();
+            
+            draw_logs(
+                &alarma,
+                COLOR_STATUS_TEXT,
+                COLOR_STATUS_BG,
+                frame,
+                chunks_inner[2],
+            );
+            
+            device_counter += 1;
+        });
+}
+*/
+
+/* OBS
+// learning sample + tab with fixed data --> for instance "colors"
 //
-fn draw_third_tab<B>(frame: &mut Frame<B>,
-                     _app: &mut App,
+fn draw_tab_fixed<B>(frame: &mut Frame<B>,
                      area: Rect)
 where
     B: Backend,
@@ -412,11 +1206,12 @@ where
 
     frame.render_widget(table, chunks[0]);
 }
+*/
 
 //
 fn draw_chart<B>(
     title: &str,
-    data: &Data,
+    device: &Device,
     color_graph_max: Color,
     color_graph_min: Color,
     frame: &mut Frame<B>,
@@ -425,18 +1220,18 @@ fn draw_chart<B>(
 where
     B: Backend
 {
-    let info_max = format!("temperature_max: {:02.02}", data.boundary_max.value);
-    let info_min = format!("temperature_min: {:02.02}", data.boundary_min.value);
+    let info_max = format!("temperature_max: {:02.02}", device.boundary_max.value);
+    let info_min = format!("temperature_min: {:02.02}", device.boundary_min.value);
 
     let mut boundary_max: Temperature = TEMPERATURE_MAX;
     let mut boundary_min: Temperature = TEMPERATURE_MIN;
     
-    let data_max = data_history_format(&data.boundary_max.history,
+    let device_max = data_history_format(&device.boundary_max.history,
                                        &mut boundary_max,
                                        Some(BoundaryVariant::Max),
     );
     
-    let data_min = data_history_format(&data.boundary_min.history,
+    let device_min = data_history_format(&device.boundary_min.history,
                                        &mut boundary_min,
                                        Some(BoundaryVariant::Min),
     );
@@ -447,13 +1242,13 @@ where
             .marker(Marker::Dot)
             .style(Style::default().fg(color_graph_max))
             .graph_type(tui::widgets::GraphType::Scatter)
-            .data(data_max.as_slice()),
+            .data(device_max.as_slice()),
         Dataset::default()
             .name(&info_min)
             .marker(Marker::Braille)
             .style(Style::default().fg(color_graph_min))
             .graph_type(tui::widgets::GraphType::Line)
-            .data(data_min.as_slice()),
+            .data(device_min.as_slice()),
     ];
 
     let boundary_min_with_offset = (boundary_min.floor() - TEMPERATURE_BOUNDARY_OFFSET) as UiValue;
@@ -468,7 +1263,7 @@ where
             Axis::default()
                 // text color
                 .title(Span::styled(
-                    format!("X Axis | diff: {:02.02}", data.diff),
+                    format!("X Axis | diff: {:02.02}", device.diff),
                     Style::default().fg(Color::Green)),
                 )
                 // border color
@@ -493,79 +1288,128 @@ where
     frame.render_widget(chart, area);
 }
 
-// draw heat bar
+// draw bar as table with single cell per row
 //
-fn draw_bar<B>(color_index: &ColorIndex,
-               chunks: Vec<Rect>,
-               frame: &mut Frame<B>,
+fn draw_bar_as_tab<B>(config: &Config,
+                      color_index: &ColorIndex,
+                      chunks: Rect,
+                      frame: &mut Frame<B>,
 )
 where
     B: Backend
 {
-    color_index
+    let items: Vec<Row> =
+        color_index
         .iter()
         .rev()
         .step_by(BAR_LEN)
         .enumerate()
-        .for_each(|(index, color)| {
-            if let Some(ch) = chunks.get(index as usize) {
-                // CANVAS_BAR
-                draw_canvas_bar(
-                    if FLAG_SHOW_BAR_INDEX.eq(&true) { format!("{index}|{:02.02}", color.0) } else { format!("{:02.02}", color.0) },
-                    Color::Cyan,
-                    Some(color.1),
-                    frame,
-                    *ch,
-                );      
-            }
-        });
+        .map(|(index, color)| {
+            let (red, green, blue) = color.1;
+
+            let cells = vec![
+                Cell::from(
+                    Span::styled(
+                        if config.flag_show_bar_index.eq(&true) {
+                            format!("{:02}|{:02.02}",
+                                    index,
+                                    color.0,
+                            )
+                        } else { format!("{:02.02}", color.0) },
+                        Style::default()
+                            .fg(COLOR_BAR_TEXT)
+                            /*
+                            .bg(match color.1 {
+                                (red, green, blue) => Color::Rgb(red, green, blue),
+                            })
+                            */
+                            .bg(Color::Rgb(red, green, blue))
+                    ),
+                )
+            ];
+            
+            Row::new(cells).height(1)
+        }).collect();
+
+    let table = Table::new(items)
+        .block(Block::default()
+               .title("Bar")
+               .borders(Borders::ALL)
+        )
+        //.header(Row::new(vec!["Celsius"]))
+        .widths(&[Constraint::Ratio(1, 1)])
+        //.widths([Constraint::Length(25), Constraint::Min(0)].as_ref())
+        //.column_spacing(1)
+        //.style(Style::default().fg(Color::Green))
+        ;
+        
+    frame.render_widget(table, chunks);
 }
 
-// draw color for each temperature
 //
-fn draw_canvas_bar<B>(
-    symbol: String,
-    color_text: Color,
-    color_area: Option<ColorRGB>,
-    frame: &mut Frame<B>,
-    area: Rect,
+fn draw_map_as_table<B>(config: &Config,
+                        chunks: Rect,
+                        array: Vec<Pixel>,
+                        frame: &mut Frame<B>,
+                        topic: &String,
 )
 where
     B: Backend
 {
-    let canvas = Canvas::default()
-        .block(Block::default())
-        .background_color( match color_area {
-            Some((red, green, blue)) => Color::Rgb(red, green, blue),
-            None => COLOR_NONE_BAR,
-        })
-        .paint(|ctx| {
-            ctx.print(
-                0 as UiValue,
-                0 as UiValue,
-                Span::styled(symbol.to_string(),
-                             Style::default().fg(color_text),
-                ),
-            )
-        });
-    
-    frame.render_widget(canvas, area);
-}
 
+    let lines: Vec<Row> = (0..LEN)
+        //.into_iter()
+        .map(|row| {
+            let cells = (0..LEN)
+                //.into_iter()
+                .map(|cell| {
+                    let index = (row * LEN) + cell;
+                    let pixel = get_pixel(&array,
+                                          row,
+                                          cell,
+                    );
+
+                    build_cell(config,
+                               pixel,
+                               index,
+                    )
+                }).collect::<Vec<Cell>>();
+            
+            Row::new(cells).height(1)
+        }).collect();
+
+    let rows_count = lines.len() as u32;
+    let rows = (0..rows_count)
+        //.into_iter()
+        .map(|_row_index| Constraint::Ratio(1, rows_count)).collect::<Vec<Constraint>>();
+
+    let table_title = format!("table: {}", &**topic);
+    
+    let table = Table::new(lines)
+        .block(Block::default()
+               .title(table_title)
+               .borders(Borders::ALL)
+        )
+        .widths(&rows);
+    
+    frame.render_widget(table, chunks);
+}
+    
 // map render: value + color
 // two chunks as via single iter
 //
-fn draw_map<B>(chunks_lines_left: Vec<Rect>,
-               chunks_lines_right: Vec<Rect>,
-               array: Vec<Pixel>,
-               frame: &mut Frame<B>,
+fn draw_map_and_values<B>(config: &Config,
+                          chunks_lines_left: Vec<Rect>,
+                          chunks_lines_right: Vec<Rect>,
+                          array: Vec<Pixel>,
+                          frame: &mut Frame<B>,
 )
 where
     B: Backend
 {
     // todo(!) --> measure duration + async
     (0..LEN)
-        .into_iter()
+        //.into_iter()
         .for_each(|row| {
             // todo(!) --> this two can go async
             let chunks_cell_left = split_area(chunks_lines_left[row],
@@ -578,28 +1422,22 @@ where
 
             // todo(!) --> try rayon for first time ???
             (0..LEN)
-                .into_iter()
+                //.into_iter()
                 .for_each(|cell| {
-                    let index = (row * LEN) + cell;
-                    let pixel = match array.as_slice().get(index) {
-                        Some(r) => *r,
-                        None => Pixel {
-                            index: index as UiValue,
-                            value: TEMPERATURE_ERROR_SLICE_VALUE as UiValue,
-                            boundary_variant: None,
-                            color: None,
-                        },
-                    };
+                    let pixel = get_pixel(&array,
+                                          row,
+                                          cell,
+                    );
                     
                     // LEFT <- TEMPERATURE
                     if let Some(ch) = chunks_cell_left.get(cell) {
                         // CANVAS_VALUES
                         show_canvas_values(
                             pixel,
-                            Color::Gray, // text
+                            COLOR_VALUES_TEXT, // text
                             pixel.color, // bg
-                            if FLAG_SHOW_INDEX.eq(&true) { ShowIndex::True } else { ShowIndex::False },
-                            if FLAG_SHOW_COLOR.eq(&true) { ShowColor::True } else { ShowColor::False },
+                            if config.flag_show_index.eq(&true) { ShowIndex::True } else { ShowIndex::False },
+                            if config.flag_show_color.eq(&true) { ShowColor::True } else { ShowColor::False },
                             frame,
                             *ch,
                         );
@@ -618,11 +1456,50 @@ where
         });
 }
 
+// map render: color
+//
+fn draw_map_only<B>(chunks: Rect,
+                    array: Vec<Pixel>,
+                    frame: &mut Frame<B>,
+)
+where
+    B: Backend
+{
+    let chunks_lines = split_area(chunks, Vertical, LEN);
+
+    // todo(!) --> measure duration + async
+    (0..LEN)
+        //.into_iter()
+        .for_each(|row| {
+            let chunks_cells = split_area(chunks_lines[row],
+                                          Horizontal,
+                                          LEN);
+
+            // todo(!) --> try rayon for first time ???
+            (0..LEN)
+                //.into_iter()
+                .for_each(|cell| {
+                    let pixel = get_pixel(&array,
+                                          row,
+                                          cell,
+                    );
+                    
+                    if let Some(ch) = chunks_cells.get(cell) {
+                        show_canvas_color(
+                            pixel.color,
+                            frame,
+                            *ch,
+                        );
+                    }
+                })
+        });
+}
+
 // display logs
 //
-fn draw_status<B>(
-    //msg: &VecDeque<&str>,
-    msg: &[&str],
+fn draw_logs<B>(
+    //logs: &Vec<String>,
+    logs: &[String],
     color_text: Color,
     color_area: Color,
     frame: &mut Frame<B>,
@@ -632,23 +1509,35 @@ where
     B: Backend
 {
     let items =
-        msg
+        logs
         .iter()
-        .map(|msg| ListItem::new(msg.to_string())
-             .style(Style::default()
-                    .add_modifier(Modifier::BOLD)
+        .map(|log| ListItem::new(log.to_string())
+             .style(
+                 Style::default()
+                     .fg(
+                         // try harder -> just quick info if paused !!!
+                         // pause will delete and later not add new !!!
+                         if log.contains(STATUS_ON_PAUSE) {
+                             COLOR_STATUS_ON_PAUSE
+                         } else if log.contains(STATUS_RECEIVING) {
+                             COLOR_STATUS_ON_RECEIVE
+                         } else if log.contains(STATUS_UNKNOWN) {
+                             COLOR_STATUS_UNKNOWN
+                         } else if log.contains(STATUS_TO_REMOVE) {
+                             COLOR_STATUS_TO_REMOVE
+                         } else {
+                             color_text
+                         }
+                     )
+                     .bg(color_area)
              )
         )
         .collect::<Vec<_>>();
 
     let list = List::new(items)
         .block(Block::default()
-               .title("List")
+               .title("Logs")
                .borders(Borders::ALL)
-        )
-        .style(Style::default()
-               .fg(color_text)
-               .bg(color_area)
         );
     
     frame.render_widget(list, area);
@@ -675,15 +1564,15 @@ where
             match show_color {
                 ShowColor::True => match color_area {
                     Some((red, green, blue)) => Color::Rgb(red, green, blue),
-                    None => COLOR_NONE_MAP,
+                    None => COLOR_NONE_MAP_VALUES,
                 },
                 ShowColor::False => {
                     match pixel.boundary_variant {
                         Some(boundary) => match boundary {
-                            BoundaryVariant::Max => Color::Red,
-                            BoundaryVariant::Min => Color::DarkGray,
+                            BoundaryVariant::Max => COLOR_VALUES_BG_BOUNDARY_MAX,
+                            BoundaryVariant::Min => COLOR_VALUES_BG_BOUNDARY_MIN,
                         },
-                        None => COLOR_NONE_MAP,
+                        None => COLOR_NONE_MAP_VALUES,
                     }
                 }
             }
@@ -707,6 +1596,8 @@ where
 
 // display single pixel as color
 //
+// todo!() -> is there a way to define it's size ???
+//
 fn show_canvas_color<B>(
     color_area: Option<ColorRGB>,
     frame: &mut Frame<B>,
@@ -720,7 +1611,7 @@ where
         .block(Block::default())
         .background_color( match color_area {
             Some((red, green, blue)) => Color::Rgb(red, green, blue),
-            None => COLOR_NONE_MAP,
+            None => COLOR_NONE_MAP_CANVAS,
         })
         .paint(|_ctx| {} );
     
@@ -736,7 +1627,7 @@ fn split_area(input: Rect,
         .direction(direction)
         .constraints(
             (0..size)
-                .into_iter()
+                //.into_iter()
                 .map(|_| Constraint::Ratio(1, size as u32))
                 .collect::<Vec<_>>()
                 .as_ref()
@@ -766,4 +1657,83 @@ fn data_history_format(data: &VecDeque<Temperature>,
             (index as UiValue, *value as UiValue)
         })
         .collect::<Vec<_>>()
+}
+
+/*
+// error log
+//
+fn draw_error_log_topic<B>(frame: &mut Frame<B>,
+                           color_text: Color,
+                           color_area: Color,
+                           area: Rect,
+                           error_log: &mut ErrorLog,
+)
+where
+    B: Backend,
+{
+    let items =
+        error_log.logs
+        .iter()
+        .map(|log| ListItem::new(format!("{}", log))
+             .style(
+                 Style::default()
+                     .fg(color_text)
+                     .bg(color_area)
+             )
+        )
+        .collect::<Vec<_>>();
+
+    let list = List::new(items)
+        .block(Block::default()
+               .title("Error_Logs")
+               .borders(Borders::ALL)
+        );
+    
+    frame.render_widget(list, area);
+}
+*/
+
+//
+fn get_pixel(array: &Vec<Pixel>,
+             row: usize,
+             cell: usize,
+) -> Pixel {
+    let index = (row * LEN) + cell;
+
+    match array.as_slice().get(index) {
+        Some(r) => *r,
+        None => Pixel {
+            index: index as UiValue,
+            value: TEMPERATURE_ERROR_SLICE_VALUE as UiValue,
+            boundary_variant: None,
+            color: None,
+        },
+    }
+}
+
+//
+fn build_cell(config: &Config,
+              pixel: Pixel,
+              index: usize) -> Cell<'static> {
+    Cell::from(
+        Span::styled(
+            // /* // TEXT + STYLE AS TABLE DATA
+            // /* // temperature as text 
+            /* // table need some text to have size !!!
+            format!("  "),
+             */
+            if config.flag_show_map_table_index.eq(&true) {
+                format!("{:02}|{:02.02}",
+                        index,
+                        pixel.value,
+                )
+            } else { format!("{:02.02}", pixel.value) },
+            Style::default()
+                .fg(COLOR_MAP_TABLE_TEXT)
+                .bg(match pixel.color {
+                    Some((red, green, blue)) => Color::Rgb(red, green, blue),
+                    None => COLOR_NONE_MAP,
+                })
+        )
+    )
 }

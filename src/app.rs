@@ -1,18 +1,82 @@
+#[allow(unused)]
+use crate::info;
+#[allow(unused)]
+use crate::warn;
+#[allow(unused)]
+use crate::error;
+
+use crate::config::Config;
+
+const TABVARIANT_STATIC: &str = "STATIC";
+const TABVARIANT_FIXED: &str = "FIXED";
+const TABVARIANT_DYNAMIC: &str = "DYNAMIC";
+
 #[derive(Debug)]
-pub struct TabsState<'a> {
-    pub titles: Vec<&'a str>,
+pub enum TabVariant {
+    Static,
+    Fixed,
+    Dynamic,
+}
+
+impl std::fmt::Display for TabVariant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f,
+               "{}",
+               match self {
+                   Self::Static => {TABVARIANT_STATIC},
+                   Self::Fixed => {TABVARIANT_FIXED},
+                   Self::Dynamic => {TABVARIANT_DYNAMIC},
+               },
+        )
+    }
+}
+
+#[derive(Debug)]
+pub struct Tab {
+    pub name: String,
+    pub variant: TabVariant,
+} 
+
+impl Tab {
+    //
+    pub fn new(name: String,
+               variant: TabVariant) -> Self {
+        Self {
+            name,
+            variant,
+        }
+    }
+
+    //
+    pub fn render(&self) -> String {
+        format!("{}: {}",
+                self.variant,
+                self.name,
+        )
+    }
+}
+
+#[derive(Debug)]
+pub struct TabsState {
+    pub titles: Vec<Tab>,
     pub index: usize,
 }
 
-impl<'a> TabsState<'a> {
-    pub fn new(titles: Vec<&'a str>) -> TabsState {
-        TabsState { titles, index: 0 }
+impl TabsState {
+    //
+    pub fn new(titles: Vec<Tab>) -> Self {
+        Self {
+            titles,
+            index: 0,
+        }
     }
 
+    //
     pub fn next(&mut self) {
         self.index = (self.index + 1) % self.titles.len();
     }
 
+    //
     pub fn previous(&mut self) {
         if self.index > 0 {
             self.index -= 1;
@@ -20,21 +84,29 @@ impl<'a> TabsState<'a> {
             self.index = self.titles.len() - 1;
         }
     }
+
+    // remove inactive device tab
+    pub fn remove(&mut self,
+                  device: &String,
+    ) {
+        self.titles.retain(|d| !d.name.eq(device));
+    }
 }
 
-#[derive(Debug)]
-pub struct App<'a> {
-    pub title: &'a str,
+pub struct App {
+    pub config: Config,
     pub should_quit: bool,
-    pub tabs: TabsState<'a>,
+    pub should_pause: bool,
+    pub tabs: TabsState,
 }
 
-impl<'a> App<'a> {
-    pub fn new(title: &'a str) -> App<'a> {
-        App {
-            title,
+impl App {
+    pub fn new(config: Config) -> App {
+        Self {
+            config,
             should_quit: false,
-            tabs: TabsState::new(vec!["HeatMap", "@=", "Sample"]),
+            should_pause: false,
+            tabs: TabsState::new(vec![]),
         }
     }
 
@@ -46,13 +118,80 @@ impl<'a> App<'a> {
         self.tabs.previous();
     }
 
-    // todo(!) --> add ESC and CTRL+C
+    pub fn on_pause(&mut self) {
+        /*
+        if self.should_pause.eq(&true) {
+            self.should_pause = false
+        }
+        else { self.should_pause = true }
+         */
+
+        self.should_pause = !self.should_pause.eq(&true);
+    }
+    
     pub fn on_key(&mut self, c: char) {
         match c {
+            // quit
             'q' => {
                 self.should_quit = true;
-            }
-            _ => {}
+            },
+            // pause
+            'p' => {
+                self.on_pause();
+            },
+            // spacebar
+            ' ' => {
+                self.on_right();
+            },
+            // tabs via number
+            ascii_i @ '1'..='9' => {
+                /*
+                // ascii table Dec value for Char 0 is 48
+                //let index = ascii_i as usize - 48;
+                if index > self.tabs.titles.len() {
+                     self.tabs.index = 0;
+                 } else {
+                     self.tabs.index = index - 1;
+                }
+                */
+
+                if let Some(index) = ascii_i.to_digit(10) {
+                    let index = index as usize;
+
+                    if index > self.tabs.titles.len() {
+                        self.tabs.index = 0;
+                    } else {
+                        self.tabs.index = index - 1;
+                    }
+                }
+            },
+            _ => {},
         }
+    }
+
+    //
+    pub fn on_ctrl_key(&mut self, c: char) {
+        match c {
+            'c' | 'x' => {
+                self.should_quit = true;
+            }
+            'f' => {
+                self.on_right();
+            }
+            'b' => {
+                self.on_left();
+            }
+            _ => {},
+        }
+    }
+
+    //
+    pub fn push_title(&mut self,
+                      tab: Tab,
+    ) {
+        self
+            .tabs
+            .titles
+            .push(tab)
     }
 }
