@@ -1,6 +1,6 @@
-# grideye_tui
-amg8833 tui client
+# grideye_ratatui
+amg8833 ratatui client
 
 <!-- ![map](screenshot_2023_03_01_14_59_28.png) -->
 
-![gif](617290.gif)
+![gif](618197.gif)
