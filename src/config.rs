@@ -66,7 +66,7 @@ pub struct Config {
     #[default(100)]
     duration_limit_device_unknown: Limit,
 
-    #[default("default_grideye_error_msg.log")]
+    #[default("default_grideye_ratatui_error_msg.log")]
     log_file: &'static str,
 }
 

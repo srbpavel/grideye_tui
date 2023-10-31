@@ -23,7 +23,6 @@ use crate::mqtt::CommonLog;
 use crate::mqtt::LEN;
 use crate::mqtt::POW;
 
-//use crate::app;
 use crate::app::App;
 
 use crate::run::Devices;
@@ -33,33 +32,41 @@ use crate::alarma::Alarma;
 
 use std::collections::VecDeque;
 use std::time::Duration;
-//use std::sync::mpsc;
 
-use tui::Frame;
-use tui::backend::Backend;
-use tui::layout::Constraint;
-use tui::layout::Direction;
-use tui::layout::Direction::Horizontal;
-use tui::layout::Direction::Vertical;
-use tui::layout::Layout;
-use tui::layout::Rect;
-use tui::style::Color;
-use tui::style::Style;
-use tui::symbols::Marker;
-use tui::text::Span;
-use tui::text::Spans;
-use tui::widgets::Axis;
-use tui::widgets::Block;
-use tui::widgets::Borders;
-use tui::widgets::Chart;
-use tui::widgets::Dataset;
-use tui::widgets::canvas::Canvas;
-use tui::widgets::List;
-use tui::widgets::ListItem;
-use tui::widgets::Cell;
-use tui::widgets::Row;
-use tui::widgets::Tabs;
-use tui::widgets::Table;
+use std::rc::Rc;
+
+//use ratatui::Frame;
+//pub type Frame<'a> = ratatui::Frame<'a, ratatui::backend::CrosstermBackend<std::io::Stderr>>;
+pub type Frame<'a> = ratatui::Frame<'a>;
+
+// ratatui use crossterm by default
+//use ratatui::backend::Backend;
+
+use ratatui::layout::Constraint;
+use ratatui::layout::Direction;
+use ratatui::layout::Direction::Horizontal;
+use ratatui::layout::Direction::Vertical;
+use ratatui::layout::Layout;
+use ratatui::layout::Rect;
+use ratatui::style::Color;
+use ratatui::style::Style;
+use ratatui::symbols::Marker;
+
+use ratatui::text::Span;
+//use ratatui::text::Spans;
+
+use ratatui::widgets::Axis;
+use ratatui::widgets::Block;
+use ratatui::widgets::Borders;
+use ratatui::widgets::Chart;
+use ratatui::widgets::Dataset;
+use ratatui::widgets::canvas::Canvas;
+use ratatui::widgets::List;
+use ratatui::widgets::ListItem;
+use ratatui::widgets::Cell;
+use ratatui::widgets::Row;
+use ratatui::widgets::Tabs;
+use ratatui::widgets::Table;
 
 // 1000ms / 25ms = 40fps/Hz
 pub const UI_REFRESH_DELAY: Duration = Duration::from_millis(25);
@@ -144,7 +151,6 @@ impl Render {
         )
     }
     
-    
     /* // cannot use while render.devices.iter_mut()
     //
     // no title but tab
@@ -178,13 +184,15 @@ impl Render {
     //
     // here we need data for specific TOPIC
     //
-    fn draw_dynamic_tab<B>(&mut self,
-                           frame: &mut Frame<B>,
-                           area: Rect,
-                           index: usize,
+    //fn draw_dynamic_tab<B>(&mut self,
+    fn draw_dynamic_tab(&mut self,
+                        //frame: &mut Frame<B>,
+                        frame: &mut Frame,
+                        area: Rect,
+                        index: usize,
     )
-    where
-        B: Backend,
+    //where
+    //    B: Backend,
     {
    
         // here we need to read index number and connect it with hashmap key
@@ -221,8 +229,10 @@ impl Render {
             let chunks = Layout::default()
                 .direction(Vertical)
                 .constraints([
-                    Constraint::Percentage(75),
-                    Constraint::Percentage(25),
+                    //Constraint::Percentage(75),
+                    //Constraint::Percentage(25),
+                    Constraint::Percentage(70),
+                    Constraint::Percentage(30),
                 ])
                 .split(area);
         
@@ -292,14 +302,16 @@ impl Render {
     
     // error log
     //
-    fn draw_error_log_topic<B>(&mut self,
-                               frame: &mut Frame<B>,
-                               area: Rect,
-                               color_text: Color,
-                               color_area: Color,
+    //fn draw_error_log_topic<B>(&mut self,
+    fn draw_error_log_topic(&mut self,
+                            //frame: &mut Frame<B>,
+                            frame: &mut Frame,
+                            area: Rect,
+                            color_text: Color,
+                            color_area: Color,
     )
-    where
-        B: Backend,
+    //where
+    //    B: Backend,
     {
         let items =
             self.common_log.logs
@@ -332,12 +344,14 @@ impl Render {
     // render
     // each topic has it's own temperature range!!!
     //
-    fn draw_tab_heatmap_all<B>(&mut self,
-                               frame: &mut Frame<B>,
-                               area: Rect,
+    //fn draw_tab_heatmap_all<B>(&mut self,
+    fn draw_tab_heatmap_all(&mut self,
+                            //frame: &mut Frame<B>,
+                            frame: &mut Frame,
+                            area: Rect,
     )
-    where
-        B: Backend,
+    //where
+    //    B: Backend,
     {
         let chunks = split_area(area,
                                 Direction::Horizontal,
@@ -353,9 +367,11 @@ impl Render {
                     .direction(Vertical)
                     .constraints([
                         //heatmap as table
-                        Constraint::Percentage(40),
+                        //Constraint::Percentage(40),
+                        Constraint::Percentage(20),
                         //heatmap via canvas
-                        Constraint::Percentage(40),
+                        //Constraint::Percentage(40),
+                        Constraint::Percentage(60),
                         //logs
                         Constraint::Percentage(20),
                     ])
@@ -414,11 +430,13 @@ impl Render {
     
     // learning sample + tab with fixed data --> for instance "colors"
     //
-    fn draw_tab_fixed<B>(&mut self,
-                         frame: &mut Frame<B>,
-                         area: Rect)
-    where
-        B: Backend,
+    //fn draw_tab_fixed<B>(&mut self,
+    fn draw_tab_fixed(&mut self,
+                      //frame: &mut Frame<B>,
+                      frame: &mut Frame,
+                      area: Rect)
+    //where
+    //    B: Backend,
     {
 
         // divide into left + right
@@ -478,10 +496,13 @@ impl Render {
     }
     
     //
-    pub fn draw<B>(&mut self,
-                   frame: &mut Frame<B>,
+    //pub fn draw<B>(&mut self,
+    pub fn draw(&mut self,
+                //frame: &mut Frame<B>,
+                frame: &mut Frame,
     )
-    where B: Backend
+    //where
+    //    B: Backend
     {
         // main window --> top tabs + bottom rest
         let chunks = Layout::default()
@@ -496,8 +517,13 @@ impl Render {
             .tabs
             .titles
             .iter()
-            .map(|t| Spans::from(Span::styled(t.render(),
-                                              Style::default().fg(COLOR_TAB_TEXT))))
+            //.map(|t| Spans::from(Span::styled(t.render(),
+            /*
+            .map(|t| Span::from(Span::styled(t.render(),
+            Style::default().fg(COLOR_TAB_TEXT))))
+            */
+            .map(|t| Span::styled(t.render(),
+                                  Style::default().fg(COLOR_TAB_TEXT)))
             .collect();
         
         let tabs = Tabs::new(tab_titles)
@@ -1209,16 +1235,18 @@ where
 */
 
 //
-fn draw_chart<B>(
+//fn draw_chart<B>(
+fn draw_chart(
     title: &str,
     device: &Device,
     color_graph_max: Color,
     color_graph_min: Color,
-    frame: &mut Frame<B>,
+    //frame: &mut Frame<B>,
+    frame: &mut Frame,
     area: Rect,
 )
-where
-    B: Backend
+//where
+//    B: Backend
 {
     let info_max = format!("temperature_max: {:02.02}", device.boundary_max.value);
     let info_min = format!("temperature_min: {:02.02}", device.boundary_min.value);
@@ -1241,13 +1269,13 @@ where
             .name(&info_max)
             .marker(Marker::Dot)
             .style(Style::default().fg(color_graph_max))
-            .graph_type(tui::widgets::GraphType::Scatter)
+            .graph_type(ratatui::widgets::GraphType::Scatter)
             .data(device_max.as_slice()),
         Dataset::default()
             .name(&info_min)
             .marker(Marker::Braille)
             .style(Style::default().fg(color_graph_min))
-            .graph_type(tui::widgets::GraphType::Line)
+            .graph_type(ratatui::widgets::GraphType::Line)
             .data(device_min.as_slice()),
     ];
 
@@ -1290,13 +1318,15 @@ where
 
 // draw bar as table with single cell per row
 //
-fn draw_bar_as_tab<B>(config: &Config,
-                      color_index: &ColorIndex,
-                      chunks: Rect,
-                      frame: &mut Frame<B>,
+//fn draw_bar_as_tab<B>(config: &Config,
+fn draw_bar_as_tab(config: &Config,
+                   color_index: &ColorIndex,
+                   chunks: Rect,
+                   //frame: &mut Frame<B>,
+                   frame: &mut Frame,
 )
-where
-    B: Backend
+//where
+//    B: Backend
 {
     let items: Vec<Row> =
         color_index
@@ -1347,14 +1377,16 @@ where
 }
 
 //
-fn draw_map_as_table<B>(config: &Config,
-                        chunks: Rect,
-                        array: Vec<Pixel>,
-                        frame: &mut Frame<B>,
-                        topic: &String,
+//fn draw_map_as_table<B>(config: &Config,
+fn draw_map_as_table(config: &Config,
+                     chunks: Rect,
+                     array: Vec<Pixel>,
+                     //frame: &mut Frame<B>,
+                     frame: &mut Frame,
+                     topic: &String,
 )
-where
-    B: Backend
+//where
+//    B: Backend
 {
 
     let lines: Vec<Row> = (0..LEN)
@@ -1398,14 +1430,18 @@ where
 // map render: value + color
 // two chunks as via single iter
 //
-fn draw_map_and_values<B>(config: &Config,
-                          chunks_lines_left: Vec<Rect>,
-                          chunks_lines_right: Vec<Rect>,
-                          array: Vec<Pixel>,
-                          frame: &mut Frame<B>,
+//fn draw_map_and_values<B>(config: &Config,
+fn draw_map_and_values(config: &Config,
+                       //chunks_lines_left: Vec<Rect>,
+                       chunks_lines_left: Rc<[Rect]>,
+                       //chunks_lines_right: Vec<Rect>,
+                       chunks_lines_right: Rc<[Rect]>,
+                       array: Vec<Pixel>,
+                       //frame: &mut Frame<B>,
+                       frame: &mut Frame,
 )
-where
-    B: Backend
+//where
+//    B: Backend
 {
     // todo(!) --> measure duration + async
     (0..LEN)
@@ -1458,12 +1494,14 @@ where
 
 // map render: color
 //
-fn draw_map_only<B>(chunks: Rect,
-                    array: Vec<Pixel>,
-                    frame: &mut Frame<B>,
+//fn draw_map_only<B>(chunks: Rect,
+fn draw_map_only(chunks: Rect,
+                 array: Vec<Pixel>,
+                 //frame: &mut Frame<B>,
+                 frame: &mut Frame,
 )
-where
-    B: Backend
+//where
+//    B: Backend
 {
     let chunks_lines = split_area(chunks, Vertical, LEN);
 
@@ -1497,16 +1535,18 @@ where
 
 // display logs
 //
-fn draw_logs<B>(
+//fn draw_logs<B>(
+fn draw_logs(
     //logs: &Vec<String>,
     logs: &[String],
     color_text: Color,
     color_area: Color,
-    frame: &mut Frame<B>,
+    //frame: &mut Frame<B>,
+    frame: &mut Frame,
     area: Rect,
 )
-where
-    B: Backend
+//where
+//    B: Backend
 {
     let items =
         logs
@@ -1546,17 +1586,19 @@ where
 // display single pixel as value
 // min/max values are highlighted with color
 //
-fn show_canvas_values<B>(
+//fn show_canvas_values<B>(
+fn show_canvas_values(
     pixel: Pixel,
     color_text: Color,
     color_area: Option<ColorRGB>,
     show_index: ShowIndex,
     show_color: ShowColor,
-    frame: &mut Frame<B>,
+    //frame: &mut Frame<B>,
+    frame: &mut Frame,
     area: Rect,
 )
-where
-    B: Backend
+//where
+//    B: Backend
 {
     let canvas = Canvas::default()
         .block(Block::default())
@@ -1598,13 +1640,15 @@ where
 //
 // todo!() -> is there a way to define it's size ???
 //
-fn show_canvas_color<B>(
+//fn show_canvas_color<B>(
+fn show_canvas_color(
     color_area: Option<ColorRGB>,
-    frame: &mut Frame<B>,
+    //frame: &mut Frame<B>,
+    frame: &mut Frame,
     area: Rect,
 )
-where
-    B: Backend
+//where
+//    B: Backend
 {
 
     let canvas = Canvas::default()
@@ -1622,7 +1666,8 @@ where
 fn split_area(input: Rect,
               direction: Direction,
               size: usize,
-) -> Vec<Rect> {
+//) -> Vec<Rect> {
+) -> Rc<[Rect]> {
     Layout::default()
         .direction(direction)
         .constraints(

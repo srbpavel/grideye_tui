@@ -1,8 +1,8 @@
 #!!! value need's to be same as package.name
 #!!! otherwise default values from Struct Config
 #!!! if syntax is wrong it will also use Struct default values
-[grideye_tui]
-app_title = "rust EPS32 + GridEye 8x8 --> TUI"
+[grideye_ratatui]
+app_title = "rust EPS32 + GridEye 8x8 --> RATATUI"
 
 datetime_timezone = "utc"
 #datetime_timezone = "local"
@@ -17,7 +17,7 @@ mqtt_topic_base = "/grid_eye"
 mqtt_topic_error_suffix = "common_log"
 mqtt_topic_wildcard = "#"
 
-mqtt_client_id = "grideye_tui"
+mqtt_client_id = "grideye_ratatui"
 
 topic_delimiter = "/"
 # /grid_eye/king/0e4dabce29ba41f79eb5ee840bf6e283
@@ -45,4 +45,4 @@ duration_limit_device_remove = 10000
 duration_limit_device_remove_warn = 5000
 duration_limit_device_unknown = 1000
 
-log_file = "/home/conan/git/srbpavel/grideye_tui/grideye_error_msg.log"
+log_file = "/home/conan/git/srbpavel/ratatui/grideye_tui/grideye_ratatui_error_msg.log"

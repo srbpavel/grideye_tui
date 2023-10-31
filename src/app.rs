@@ -101,7 +101,8 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(config: Config) -> App {
+    //
+    pub fn new(config: Config) -> Self {
         Self {
             config,
             should_quit: false,
@@ -110,6 +111,9 @@ impl App {
         }
     }
 
+    // todo!
+    //pub fn tick(&self) {}
+    
     pub fn on_right(&mut self) {
         self.tabs.next();
     }

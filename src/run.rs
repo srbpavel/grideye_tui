@@ -12,29 +12,31 @@ use crate::app::Tab;
 use crate::app::TabVariant;
 
 use crate::mqtt;
-//use crate::mqtt::Mqtt;
 use crate::mqtt::CommonMsg;
 
 use crate::ui;
+use crate::ui::Render;
 use crate::ui::Device;
 use crate::ui::UI_REFRESH_DELAY;
 
-//use std::thread;
-//use std::io;
-use std::sync::mpsc;
+use std::sync::mpsc::channel;
+use std::sync::mpsc::Sender;
 
-use tui::Terminal;
-use tui::backend::Backend;
-use tui::backend::CrosstermBackend;
+use ratatui::Terminal;
+use ratatui::backend::Backend;
+use ratatui::backend::CrosstermBackend;
 
-use crossterm::execute;
+//use crossterm::execute;
+
 use crossterm::terminal::disable_raw_mode;
 use crossterm::terminal::enable_raw_mode;
 use crossterm::terminal::LeaveAlternateScreen;
 use crossterm::terminal::EnterAlternateScreen;
+use crossterm::ExecutableCommand;
+
 use crossterm::event;
-use crossterm::event::DisableMouseCapture;
-use crossterm::event::EnableMouseCapture;
+//use crossterm::event::DisableMouseCapture;
+//use crossterm::event::EnableMouseCapture;
 use crossterm::event::Event;
 use crossterm::event::KeyCode;
 
@@ -43,14 +45,15 @@ use crossterm::event::KeyEventKind;
 use crossterm::event::KeyEventState;
 use crossterm::event::KeyModifiers;
 
-/* // KEY Pause
+// /* // KEY Pause
 use crossterm::event::KeyboardEnhancementFlags;
 use crossterm::event::PushKeyboardEnhancementFlags;
 use crossterm::event::PopKeyboardEnhancementFlags;
-*/
+// */
 
-//#[derive(PartialEq)]
-//#[derive(Debug, PartialEq)]
+type Err = Box<dyn std::error::Error>;
+type Result<T> = std::result::Result<T, Err>;
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Device2Tab {
     Dynamic(String),
@@ -78,19 +81,14 @@ pub type Devices = std::collections::HashMap <DevicesKey, Device>;
 type DevicesToRemove = Vec<DevicesKey>;
 
 //
-pub fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
-/*
-pub fn run<W>(config: Config,
-              write_logger: &simplelog::WriteLogger<W>,
-) -> Result<(), Box<dyn std::error::Error>>
-where
-        W: std::io::Write + core::marker::Send + 'static,
-{
-*/
-
+//pub fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(config: Config) -> Result<()> {
     // SETUP TERMINAL
-    enable_raw_mode()?;
+    startup()?;
+    /*
     let mut stdout = std::io::stdout();
+
+    /*
     execute!(stdout,
              EnterAlternateScreen,
              EnableMouseCapture,
@@ -103,34 +101,53 @@ where
              ),
              */
     )?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    */
 
-    let app = App::new(config);
-
-    /* // Record
-    let record = log::Record::builder()
-        .args(format_args!("Info -> in RUN"))
-        .level(log::Level::Info)
-        .build();
-
-    write_logger.log(&record);
+    stdout.execute(EnterAlternateScreen)?;
+    //stdout.execute(EnableMouseCapture)?;
+    stdout.execute(
+        PushKeyboardEnhancementFlags(
+            KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+        )
+    )?;
+    enable_raw_mode()?;
     */
     
+    //let backend = CrosstermBackend::new(stdout);
+    let backend = CrosstermBackend::new(std::io::stdout());
+    let mut terminal = Terminal::new(backend)?;
+    terminal.clear()?;
+    
+    let app = App::new(config);
+
     // LOOP
     let res = run_app(&mut terminal,
                       app,
     );
     
     // RESTORE TERMINAL
-    disable_raw_mode()?;
+    //disable_raw_mode()?;
+    /*
     execute!(
         terminal.backend_mut(),
         LeaveAlternateScreen,
         DisableMouseCapture,
         //PopKeyboardEnhancementFlags,
     )?;
+    */
+
+    shutdown()?;
+    /*
+    let mut stdout = std::io::stdout();
+    //stdout.execute(terminal.backend_mut())?;
+    stdout.execute(LeaveAlternateScreen)?;
+    //stdout.execute(DisableMouseCapture)?;
+    stdout.execute(PopKeyboardEnhancementFlags)?;
+    
+    disable_raw_mode()?;
+    
     terminal.show_cursor()?;
+    */
 
     if let Err(err) = res {
         println!("{:?}", err)
@@ -142,11 +159,12 @@ where
 //
 fn run_app<B: Backend>(terminal: &mut Terminal<B>,
                        app: App,
-) -> std::io::Result<()> {
+//) -> std::io::Result<()> {
+) -> Result<()> {
     // LAUNCH MEASUREMENT THREAD
-    let (data_sender, data_receiver) = mpsc::channel::<mqtt::Payload>();
+    let (data_sender, data_receiver) = channel::<mqtt::Payload>();
     // COMMON LOG
-    let (common_sender, common_receiver) = mpsc::channel::<CommonMsg>();
+    let (common_sender, common_receiver) = channel::<CommonMsg>();
     
     // INCOMING DATA
     let mqtt = mqtt::Mqtt::new(app.config.clone()).connect();
@@ -160,44 +178,32 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>,
         );
 
     // SCREEN
-    let mut render = ui::Render::new(app);
+    let mut render = Render::new(app);
     
     // App.tabs.titles
-    //
-    // first tab - static -> playground
+    // + first tab - static -> playground
     render.app.push_title(
         Tab::new(String::from("color"),
                  TabVariant::Static,
         )
     );
-    // second tab - static -> all heat_maps
+    // + second tab - static -> all heat_maps
     render.app.push_title(
         Tab::new(String::from("heatmap"),
-                  TabVariant::Static,
+                 TabVariant::Static,
         )
     );
-    // third tab -> fixed in dynamic -> commomn_log 
+    // + third tab -> fixed in dynamic -> commomn_log 
     let mqtt_topic_error = mqtt::create_topic(render.app.config.mqtt_topic_base,
                                               &[render.app.config.mqtt_topic_error_suffix],
     );
 
-    //
+    // + common_log
     let fixed_tab = Device2Tab::Fixed(mqtt_topic_error.clone());
-    
     render.insert_device(fixed_tab);
-    /*
-    // 
-    render.dynamic_tabs.push(fixed_tab);
-
-    //
-    render.app.push_title(Tab {
-        name: mqtt_topic_error,
-        variant: TabVariant::Fixed,
-    });
-    */
     
     loop {
-        // on PAUSE we stop receive mqtt
+        // ON_PAUSE we stop receive mqtt
         // verify retention ???
         if render.app.should_pause.eq(&false) {
             // Payload via channel from incomming mqtt
@@ -225,7 +231,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>,
                     device.status = ui::Status::OnPause;
                 });
         }
-
+        
         // COMMON_LOG
         for common_msg in common_receiver.try_iter() {
             // add msg to vec_deque
@@ -233,19 +239,42 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>,
             // shrink to limit size
             render.common_log.truncate();
         }
-
+        
         // RENDER
         terminal.draw(|frame| {
             render.draw(frame);
         })?;
-        
+
+        // wtf why this was here?
         // SLEEP
         // todo! test via timer
-        std::thread::sleep(UI_REFRESH_DELAY);
+        //std::thread::sleep(UI_REFRESH_DELAY);
 
         // KEY
-        if crossterm::event::poll(UI_REFRESH_DELAY)? {
+        if event::poll(UI_REFRESH_DELAY)? {
             if let Event::Key(key) = event::read()? {
+                if key.kind == KeyEventKind::Press {
+                    match key.code {
+                        KeyCode::Char(c) => render.app.on_key(c),
+                        KeyCode::Left | KeyCode::Backspace => render.app.on_left(),
+                        KeyCode::Right => render.app.on_right(),
+                        KeyCode::Esc => {
+                            render.app.should_quit = true;
+                        },
+                        // /* // try harder -> not working yet
+                        KeyCode::Pause => {
+                            render.app.on_pause();
+                        },
+                        // */
+                        _ => {}
+                    }
+                }
+                
+                /*
+                //
+                // we just look for single fast press
+                // not long hold
+                //
                 // just to match field "code"
                 match key.code {
                     KeyCode::Char(c) => render.app.on_key(c),
@@ -254,28 +283,16 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>,
                     KeyCode::Esc => {
                         render.app.should_quit = true;
                     },
-                    /* // try harder -> not working yet
+                    // /* // try harder -> not working yet
                     KeyCode::Pause => {
-                        app.on_pause();
+                        render.app.on_pause();
                     },
-                    */
+                    // */
                     _ => {}
-                }
-
-                // with modifiers as CONTROL/ALT/...
-                /*
-                match key {
-                    KeyEvent {
-                        code: KeyCode::Char(any_char),
-                        modifiers: KeyModifiers::CONTROL,
-                        kind: KeyEventKind::Press,
-                        state: KeyEventState::NONE,
-                    } => render.app.on_ctrl_key(any_char),
-                    _ => {}
-
                 }
                 */
-
+                
+                // with modifiers as CONTROL/ALT/...
                 if let KeyEvent {
                     code: KeyCode::Char(any_char),
                     modifiers: KeyModifiers::CONTROL,
@@ -285,6 +302,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>,
             }
         }
 
+        // EXIT
         if render.app.should_quit {
             return Ok(());
         }
@@ -293,8 +311,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>,
 
 //
 fn remove_inactive_devices(items: DevicesToRemove,
-                           render: &mut ui::Render,
-                           common_sender: mpsc::Sender<CommonMsg>,
+                           render: &mut Render,
+                           common_sender: Sender<CommonMsg>,
 ) {
     //info!("remove_inactive_items(): {:?}", items);
     common_sender
@@ -336,8 +354,8 @@ fn remove_inactive_devices(items: DevicesToRemove,
 }
 
 //
-fn devices_task(render: &mut ui::Render,
-                common_sender: mpsc::Sender<CommonMsg>,
+fn devices_task(render: &mut Render,
+                common_sender: Sender<CommonMsg>,
 ) -> Option<DevicesToRemove> {
     let mut devices_to_remove = vec!();
 
@@ -430,4 +448,37 @@ fn devices_task(render: &mut ui::Render,
     } else {
         Some(devices_to_remove)
     }
+}
+
+//
+//fn startup() -> Result<(), Box<dyn std::error::Error>> {
+fn startup() -> Result<()> {
+    let mut stdout = std::io::stdout();
+
+    stdout.execute(EnterAlternateScreen)?;
+    //stdout.execute(EnableMouseCapture)?;
+    stdout.execute(
+        PushKeyboardEnhancementFlags(
+            KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+        )
+    )?;
+
+    enable_raw_mode()?;
+
+    Ok(())
+}
+
+//
+//fn shutdown() -> Result<(), Box<dyn std::error::Error>> {
+fn shutdown() -> Result<()> {
+    let mut stdout = std::io::stdout();
+
+    //stdout.execute(terminal.backend_mut())?;
+    stdout.execute(LeaveAlternateScreen)?;
+    //stdout.execute(DisableMouseCapture)?;
+    stdout.execute(PopKeyboardEnhancementFlags)?;
+    
+    disable_raw_mode()?;
+    
+    Ok(())
 }
