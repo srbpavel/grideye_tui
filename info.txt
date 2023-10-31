@@ -1,0 +1,27 @@
+### CARGO
+$cargo build --release
+$export RUST_LOG=info
+$cargo run --release 2>2.log
+
+
+### MOSQUITTO
+#systemctl stop mosquitto.service 
+#systemctl start mosquitto.service 
+#journalctl -u mosquitto.service | tail
+
+$tail -n100 /var/log/mosquitto/mosquitto.log|less
+
+1686943682: New client connected from 192.168.0.107:61212 as esp32_c3_rev3_rust_board_2_queen_0d043256-b805-11ed-863d-43954022fec5 (p2, c1, k120).
+1686943789: Client grideye_tui_fd097dd0fc7f4b36a8d629989a022dd7 closed its connection.
+1686943796: New connection from 192.168.0.103:53290 on port 1883.
+1686943796: New client connected from 192.168.0.103:53290 as grideye_tui_5d49b603e67942f2849b3cb9b18cedb5 (p2, c1, k5).
+1686943827: Client grideye_tui_5d49b603e67942f2849b3cb9b18cedb5 closed its connection.
+1686944014: New connection from 192.168.0.103:59682 on port 1883.
+1686944014: New client connected from 192.168.0.103:59682 as grideye_tui_d5af53c85240462ba2c8beb85b1582b3 (p2, c1, k5).
+watch -n0.1 "tail -n50 grideye_error_msg.log"
+cat -n 2.log|tail -n25
+
+
+### WATCH
+watch -n0.1 "tail -n50 2.log"
+watch -n0.1 "tail -n50 grideye_ratatui_error_msg.log"
