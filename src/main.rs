@@ -27,9 +27,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     simplelog::CombinedLogger::init(
         vec![
             simplelog::TermLogger::new(
-                //simplelog::LevelFilter::Warn,
-                //simplelog::LevelFilter::Debug,
-                //simplelog::LevelFilter::Info,
                 simplelog::LevelFilter::Error,
                 simplelog::Config::default(),
                 simplelog::TerminalMode::Mixed,
@@ -42,9 +39,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 log_file,
             ),
         ]
-    ).unwrap();
+    )?;
+
     info!("GRIDEYE_TERMINAL RATATUI");
-    
+
     run::run(config)?;
 
     Ok(())

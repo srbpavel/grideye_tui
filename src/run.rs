@@ -26,8 +26,6 @@ use ratatui::Terminal;
 use ratatui::backend::Backend;
 use ratatui::backend::CrosstermBackend;
 
-//use crossterm::execute;
-
 use crossterm::terminal::disable_raw_mode;
 use crossterm::terminal::enable_raw_mode;
 use crossterm::terminal::LeaveAlternateScreen;
@@ -81,39 +79,10 @@ pub type Devices = std::collections::HashMap <DevicesKey, Device>;
 type DevicesToRemove = Vec<DevicesKey>;
 
 //
-//pub fn run(config: Config) -> Result<(), Box<dyn std::error::Error>> {
 pub fn run(config: Config) -> Result<()> {
     // SETUP TERMINAL
     startup()?;
-    /*
-    let mut stdout = std::io::stdout();
-
-    /*
-    execute!(stdout,
-             EnterAlternateScreen,
-             EnableMouseCapture,
-             /*
-             // try harder! -> not working for Pause yet
-             //
-             // https://docs.rs/crossterm/latest/crossterm/event/enum.KeyCode.html#variant.Pause
-             PushKeyboardEnhancementFlags(
-                 KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-             ),
-             */
-    )?;
-    */
-
-    stdout.execute(EnterAlternateScreen)?;
-    //stdout.execute(EnableMouseCapture)?;
-    stdout.execute(
-        PushKeyboardEnhancementFlags(
-            KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-        )
-    )?;
-    enable_raw_mode()?;
-    */
     
-    //let backend = CrosstermBackend::new(stdout);
     let backend = CrosstermBackend::new(std::io::stdout());
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
@@ -126,28 +95,7 @@ pub fn run(config: Config) -> Result<()> {
     );
     
     // RESTORE TERMINAL
-    //disable_raw_mode()?;
-    /*
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture,
-        //PopKeyboardEnhancementFlags,
-    )?;
-    */
-
     shutdown()?;
-    /*
-    let mut stdout = std::io::stdout();
-    //stdout.execute(terminal.backend_mut())?;
-    stdout.execute(LeaveAlternateScreen)?;
-    //stdout.execute(DisableMouseCapture)?;
-    stdout.execute(PopKeyboardEnhancementFlags)?;
-    
-    disable_raw_mode()?;
-    
-    terminal.show_cursor()?;
-    */
 
     if let Err(err) = res {
         println!("{:?}", err)
@@ -159,7 +107,6 @@ pub fn run(config: Config) -> Result<()> {
 //
 fn run_app<B: Backend>(terminal: &mut Terminal<B>,
                        app: App,
-//) -> std::io::Result<()> {
 ) -> Result<()> {
     // LAUNCH MEASUREMENT THREAD
     let (data_sender, data_receiver) = channel::<mqtt::Payload>();
@@ -245,11 +192,6 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>,
             render.draw(frame);
         })?;
 
-        // wtf why this was here?
-        // SLEEP
-        // todo! test via timer
-        //std::thread::sleep(UI_REFRESH_DELAY);
-
         // KEY
         if event::poll(UI_REFRESH_DELAY)? {
             if let Event::Key(key) = event::read()? {
@@ -269,28 +211,6 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>,
                         _ => {}
                     }
                 }
-                
-                /*
-                //
-                // we just look for single fast press
-                // not long hold
-                //
-                // just to match field "code"
-                match key.code {
-                    KeyCode::Char(c) => render.app.on_key(c),
-                    KeyCode::Left | KeyCode::Backspace => render.app.on_left(),
-                    KeyCode::Right => render.app.on_right(),
-                    KeyCode::Esc => {
-                        render.app.should_quit = true;
-                    },
-                    // /* // try harder -> not working yet
-                    KeyCode::Pause => {
-                        render.app.on_pause();
-                    },
-                    // */
-                    _ => {}
-                }
-                */
                 
                 // with modifiers as CONTROL/ALT/...
                 if let KeyEvent {
@@ -328,18 +248,6 @@ fn remove_inactive_devices(items: DevicesToRemove,
     items
         .iter()
         .for_each(|device| {
-            /*
-            if let Some(_) = render.devices.remove(device) {
-                render.remove_device(device);
-
-                //display msg in log
-                common_sender
-                    .send(
-                        CommonMsg::record(format!("device was deleted: {}", device))
-                    )
-                    .unwrap();
-            };
-            */
             if render.devices.remove(device).is_some() {
                 render.remove_device(device);
 
@@ -434,7 +342,6 @@ fn devices_task(render: &mut Render,
                         _ => {
                             single_device.verify_status(&render.app.config,
                                                         &mut devices_to_remove,
-                                                        //common_sender.clone(),
                             );
                         },
                     }
@@ -451,7 +358,6 @@ fn devices_task(render: &mut Render,
 }
 
 //
-//fn startup() -> Result<(), Box<dyn std::error::Error>> {
 fn startup() -> Result<()> {
     let mut stdout = std::io::stdout();
 
@@ -469,7 +375,6 @@ fn startup() -> Result<()> {
 }
 
 //
-//fn shutdown() -> Result<(), Box<dyn std::error::Error>> {
 fn shutdown() -> Result<()> {
     let mut stdout = std::io::stdout();
 

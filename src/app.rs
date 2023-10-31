@@ -123,13 +123,6 @@ impl App {
     }
 
     pub fn on_pause(&mut self) {
-        /*
-        if self.should_pause.eq(&true) {
-            self.should_pause = false
-        }
-        else { self.should_pause = true }
-         */
-
         self.should_pause = !self.should_pause.eq(&true);
     }
     

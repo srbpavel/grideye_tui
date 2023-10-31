@@ -94,7 +94,6 @@ pub struct CommonLog {
 impl Default for CommonLog {
     fn default() -> Self {
         Self {
-            //logs: VecDeque::default(),
             logs: VecDeque::with_capacity(COMMON_LOG_CAPACITY),
         }
     }
@@ -379,7 +378,6 @@ impl Mqtt {
                             */
                             
                             // verify topic + payload len
-                            //if publish_data.topic.contains(&self.config.mqtt_topic_base) && publish_data.payload.len().eq(&MQTT_PAYLOAD_SIZE) {
                             if publish_data.topic.contains(self.config.mqtt_topic_base) && publish_data.payload.len().eq(&MQTT_PAYLOAD_SIZE) {
 
                                 let payload = parse_incomming(publish_data);
@@ -502,8 +500,8 @@ fn uniq_id(prefix: &str) -> String {
     )
 }
 
+// todo! try harder
 //
-//pub fn create_topic<'a>(base: &'a str,
 pub fn create_topic(base: &str,
                     parts: &[&str],
 ) -> String {
