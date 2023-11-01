@@ -181,7 +181,7 @@ impl App {
             _ => {},
         }
     }
-
+    
     //
     pub fn push_title(&mut self,
                       tab: Tab,

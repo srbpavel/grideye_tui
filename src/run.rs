@@ -17,10 +17,14 @@ use crate::mqtt::CommonMsg;
 use crate::ui;
 use crate::ui::Render;
 use crate::ui::Device;
-use crate::ui::UI_REFRESH_DELAY;
+//use crate::ui::UI_REFRESH_DELAY;
 
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
+use std::sync::mpsc::Receiver;
+
+use std::time::Duration;
+use std::time::Instant;
 
 use ratatui::Terminal;
 use ratatui::backend::Backend;
@@ -33,24 +37,115 @@ use crossterm::terminal::EnterAlternateScreen;
 use crossterm::ExecutableCommand;
 
 use crossterm::event;
-//use crossterm::event::DisableMouseCapture;
-//use crossterm::event::EnableMouseCapture;
-use crossterm::event::Event;
+use crossterm::event::Event as CrosstermEvent;
 use crossterm::event::KeyCode;
 
-use crossterm::event::KeyEvent;
-use crossterm::event::KeyEventKind;
-use crossterm::event::KeyEventState;
+// CTRL
+//use crossterm::event::KeyEvent;
+//use crossterm::event::KeyEventKind;
+//use crossterm::event::KeyEventState;
 use crossterm::event::KeyModifiers;
 
-// /* // KEY Pause
+/* // KEY Pause
 use crossterm::event::KeyboardEnhancementFlags;
 use crossterm::event::PushKeyboardEnhancementFlags;
 use crossterm::event::PopKeyboardEnhancementFlags;
-// */
+*/
 
 type Err = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Err>;
+
+#[derive(Clone, Copy, Debug)]
+pub enum Event {
+    Tick,
+    Resize(u16, u16),
+    OnKey(char),
+    Modifier(char),
+    OnLeft,
+    OnRight,
+    Pause,
+    Quit,
+}
+
+#[derive(Debug)]
+pub struct EventHandler {
+    //_sender: Sender<Event>,
+    receiver: Receiver<Event>,
+    //_handler: std::thread::JoinHandle<()>,
+}
+
+impl EventHandler {
+    /// Constructs a new instance of [`EventHandler`].
+    pub fn new(tick_rate: u64) -> Self {
+        let tick_rate = Duration::from_millis(tick_rate);
+
+        let (sender, receiver) = channel();
+
+        let _handler = {
+            let sender = sender.clone();
+
+            std::thread::spawn(move || {
+                // TICK init
+                let mut last_tick = Instant::now();
+
+                // LOOP
+                loop {
+                    let timeout = tick_rate
+                        .checked_sub(last_tick.elapsed())
+                        .unwrap_or(tick_rate);
+
+                    // SLEEP
+                    if event::poll(timeout)
+                        .expect("no events available") {
+                            match event::read().expect("unable to read event") {
+                                CrosstermEvent::Key(key) => {
+                                    if key.kind == event::KeyEventKind::Press {
+                                        match key.code {
+                                            KeyCode::Char(c) => {
+                                                match key.modifiers {
+                                                    KeyModifiers::CONTROL => sender.send(Event::Modifier(c)),
+                                                    _ => sender.send(Event::OnKey(c)),
+                                                }
+                                            },
+                                            KeyCode::Left | KeyCode::Backspace => sender.send(Event::OnLeft),
+                                            KeyCode::Right => sender.send(Event::OnRight),
+                                            KeyCode::Esc => sender.send(Event::Quit),
+                                            KeyCode::Pause => sender.send(Event::Pause),
+                                            _ => Ok(()),
+                                        }
+                                    } else {
+                                        Ok(())
+                                    }
+                                },
+                                CrosstermEvent::Resize(w, h) => sender.send(Event::Resize(w, h)),
+                                _ => unimplemented!(),
+                            }
+                            .expect("failed to send terminal event")
+                        }
+
+                    // UDPATE LAST TICK since previous tick
+                    if last_tick.elapsed() >= tick_rate {
+                        sender.send(Event::Tick)
+                            .expect("failed to send tick event");
+
+                        last_tick = Instant::now();
+                    }
+                }
+            })
+        };
+
+        Self {
+            //sender: sender,
+            receiver,
+            //_handler: handler,
+        }
+    }
+    
+    //
+    pub fn next(&self) -> Result<Event> {
+        Ok(self.receiver.recv()?)
+    }
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Device2Tab {
@@ -85,6 +180,7 @@ pub fn run(config: Config) -> Result<()> {
     
     let backend = CrosstermBackend::new(std::io::stdout());
     let mut terminal = Terminal::new(backend)?;
+    terminal.hide_cursor()?;
     terminal.clear()?;
     
     let app = App::new(config);
@@ -148,6 +244,12 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>,
     // + common_log
     let fixed_tab = Device2Tab::Fixed(mqtt_topic_error.clone());
     render.insert_device(fixed_tab);
+
+    // u64 not duration
+    //let events = EventHandler::new(UI_REFRESH_DELAY);
+    // TOTALY BLOCKS LAPTOP !!! study more why and TUI ok with that
+    //let events = EventHandler::new(25);
+    let events = EventHandler::new(250);
     
     loop {
         // ON_PAUSE we stop receive mqtt
@@ -186,42 +288,24 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>,
             // shrink to limit size
             render.common_log.truncate();
         }
-        
+
         // RENDER
         terminal.draw(|frame| {
             render.draw(frame);
         })?;
 
-        // KEY
-        if event::poll(UI_REFRESH_DELAY)? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Char(c) => render.app.on_key(c),
-                        KeyCode::Left | KeyCode::Backspace => render.app.on_left(),
-                        KeyCode::Right => render.app.on_right(),
-                        KeyCode::Esc => {
-                            render.app.should_quit = true;
-                        },
-                        // /* // try harder -> not working yet
-                        KeyCode::Pause => {
-                            render.app.on_pause();
-                        },
-                        // */
-                        _ => {}
-                    }
-                }
-                
-                // with modifiers as CONTROL/ALT/...
-                if let KeyEvent {
-                    code: KeyCode::Char(any_char),
-                    modifiers: KeyModifiers::CONTROL,
-                    kind: KeyEventKind::Press,
-                    state: KeyEventState::NONE,
-                } = key { render.app.on_ctrl_key(any_char) }
-            }
+        // KEY ACTION + TICK
+        match events.next()? {
+            Event::Tick => {},
+            Event::Resize(_, _) => {},
+            Event::OnKey(c) => render.app.on_key(c),
+            Event::Modifier(c) => render.app.on_ctrl_key(c),
+            Event::OnLeft => render.app.on_left(),
+            Event::OnRight => render.app.on_right(),
+            Event::Pause => render.app.on_pause(),
+            Event::Quit => render.app.should_quit = true,
         }
-
+        
         // EXIT
         if render.app.should_quit {
             return Ok(());
@@ -362,13 +446,14 @@ fn startup() -> Result<()> {
     let mut stdout = std::io::stdout();
 
     stdout.execute(EnterAlternateScreen)?;
-    //stdout.execute(EnableMouseCapture)?;
+    /*
     stdout.execute(
         PushKeyboardEnhancementFlags(
             KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
         )
     )?;
-
+    */
+    
     enable_raw_mode()?;
 
     Ok(())
@@ -378,10 +463,8 @@ fn startup() -> Result<()> {
 fn shutdown() -> Result<()> {
     let mut stdout = std::io::stdout();
 
-    //stdout.execute(terminal.backend_mut())?;
     stdout.execute(LeaveAlternateScreen)?;
-    //stdout.execute(DisableMouseCapture)?;
-    stdout.execute(PopKeyboardEnhancementFlags)?;
+    //stdout.execute(PopKeyboardEnhancementFlags)?;
     
     disable_raw_mode()?;
     

@@ -30,7 +30,7 @@ use crate::run::Device2Tab;
 use crate::alarma::Alarma;
 
 use std::collections::VecDeque;
-use std::time::Duration;
+//use std::time::Duration;
 
 use std::rc::Rc;
 
@@ -62,7 +62,7 @@ use ratatui::widgets::Table;
 pub type Frame<'a> = ratatui::Frame<'a>;
 
 // 1000ms / 25ms = 40fps/Hz
-pub const UI_REFRESH_DELAY: Duration = Duration::from_millis(25);
+//pub const UI_REFRESH_DELAY: Duration = Duration::from_millis(25);
 
 pub const DATA_CAPACITY: usize = 100;
 pub const DATA_ALARMA_CAPACITY: usize = 3;
