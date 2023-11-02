@@ -17,7 +17,6 @@ use crate::mqtt::CommonMsg;
 use crate::ui;
 use crate::ui::Render;
 use crate::ui::Device;
-//use crate::ui::UI_REFRESH_DELAY;
 
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Sender;
@@ -39,11 +38,6 @@ use crossterm::ExecutableCommand;
 use crossterm::event;
 use crossterm::event::Event as CrosstermEvent;
 use crossterm::event::KeyCode;
-
-// CTRL
-//use crossterm::event::KeyEvent;
-//use crossterm::event::KeyEventKind;
-//use crossterm::event::KeyEventState;
 use crossterm::event::KeyModifiers;
 
 /* // KEY Pause
@@ -58,7 +52,6 @@ type Result<T> = std::result::Result<T, Err>;
 #[derive(Clone, Copy, Debug)]
 pub enum Event {
     Tick,
-    Resize(u16, u16),
     OnKey(char),
     Modifier(char),
     OnLeft,
@@ -75,7 +68,7 @@ pub struct EventHandler {
 }
 
 impl EventHandler {
-    /// Constructs a new instance of [`EventHandler`].
+    //
     pub fn new(tick_rate: u64) -> Self {
         let tick_rate = Duration::from_millis(tick_rate);
 
@@ -94,7 +87,7 @@ impl EventHandler {
                         .checked_sub(last_tick.elapsed())
                         .unwrap_or(tick_rate);
 
-                    // SLEEP
+                    // POLL
                     if event::poll(timeout)
                         .expect("no events available") {
                             match event::read().expect("unable to read event") {
@@ -117,7 +110,6 @@ impl EventHandler {
                                         Ok(())
                                     }
                                 },
-                                CrosstermEvent::Resize(w, h) => sender.send(Event::Resize(w, h)),
                                 _ => unimplemented!(),
                             }
                             .expect("failed to send terminal event")
@@ -245,11 +237,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>,
     let fixed_tab = Device2Tab::Fixed(mqtt_topic_error.clone());
     render.insert_device(fixed_tab);
 
-    // u64 not duration
-    //let events = EventHandler::new(UI_REFRESH_DELAY);
-    // TOTALY BLOCKS LAPTOP !!! study more why and TUI ok with that
-    //let events = EventHandler::new(25);
-    let events = EventHandler::new(250);
+    let events = EventHandler::new(ui::UI_REFRESH_DELAY);
     
     loop {
         // ON_PAUSE we stop receive mqtt
@@ -297,7 +285,6 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>,
         // KEY ACTION + TICK
         match events.next()? {
             Event::Tick => {},
-            Event::Resize(_, _) => {},
             Event::OnKey(c) => render.app.on_key(c),
             Event::Modifier(c) => render.app.on_ctrl_key(c),
             Event::OnLeft => render.app.on_left(),
@@ -351,27 +338,13 @@ fn devices_task(render: &mut Render,
 ) -> Option<DevicesToRemove> {
     let mut devices_to_remove = vec!();
 
-    /* // DEBUG too many
-    error!("render.dynamic_tabs: {:?}",
-           render.dynamic_tabs,
-    );
-    */
-
     if !render.devices.is_empty() {
         render
             .devices
             .iter_mut()
             .for_each(|(key, single_device)| {
                 // topic name which is used to get from hash_map
-                //let device_tab_name = format!("{key}");
                 let device_tab_name = String::from(key);
-                
-                /* // DEBUG too many
-                error!("device: {:?} / {:?}",
-                       device_tab_name,
-                       single_device.status,
-                );
-                */
                 
                 // insert new active topic
                 //
@@ -388,13 +361,6 @@ fn devices_task(render: &mut Render,
                         )
                         .unwrap();
 
-                    /* // todo(!) try harder
-                    &render.insert_device(
-                        Device2Tab::Dynamic(device_tab_name)
-                    );
-                    */
-                    
-                    // /*
                     // mqtt topic name as key in hashmap
                     render
                         .dynamic_tabs
@@ -409,18 +375,11 @@ fn devices_task(render: &mut Render,
                                      TabVariant::Dynamic,
                             )
                         );
-                    // */
                     
-                    // some work on existing device
-                    //
-                    // prepare devices to be deleted
-                    } else {
-                    /* // DEBUG too many
-                    info!("devices_task() !contains: {:?}",
-                          single_device.topic,
-                    );
-                    */
-                    
+                // some work on existing device
+                //
+                // prepare devices to be deleted
+                } else {
                     match single_device.status {
                         ui::Status::OnPause => {},
                         _ => {

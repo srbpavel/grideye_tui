@@ -21,8 +21,10 @@ use pallete::IRON_BOW_LONG as PALLETE;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = config::CONFIG;
     
-    // todo! why does not append?
-    let log_file = std::fs::File::create(config.log_file)?;
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(config.log_file)?;
     
     simplelog::CombinedLogger::init(
         vec![
