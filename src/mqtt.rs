@@ -21,8 +21,9 @@ use bytes::Bytes;
 
 use rumqttc::Client;
 use rumqttc::Connection;
+use rumqttc::Event;
 use rumqttc::MqttOptions;
-use rumqttc::Packet;
+use rumqttc::mqttbytes::v4::Packet;
 use rumqttc::QoS;
 
 pub const LEN: usize = 8;
@@ -357,7 +358,7 @@ impl Mqtt {
                 );
 
             thread::spawn(move || {
-                for (_, event) in mqtt_connection.iter().enumerate() {
+                for event in mqtt_connection.iter() {
                     // // type Item = Result<Event, ConnectionError>
                     match event {
                         /*
@@ -369,7 +370,7 @@ impl Mqtt {
                             pkid: u16,
                             payload: Bytes,
                         */
-                        Ok(rumqttc::Event::Incoming(Packet::Publish(publish_data))) => {
+                        Ok(Event::Incoming(Packet::Publish(publish_data))) => {
                             // DEBUG
                             /*
                             info!("MQTT incomming data: {:?}",
@@ -395,8 +396,8 @@ impl Mqtt {
                         },
                         Ok(invalid_payload) => {
                             match invalid_payload {
-                                rumqttc::Event::Incoming(Packet::PingResp) => {},
-                                rumqttc::Event::Outgoing(rumqttc::Outgoing::PingReq) => {},
+                                Event::Incoming(Packet::PingResp) => {},
+                                Event::Outgoing(rumqttc::Outgoing::PingReq) => {},
                                 _ => {
                                     error!("invalid payload: {:?}",
                                            invalid_payload,
@@ -411,9 +412,8 @@ impl Mqtt {
                             thread::sleep(MQTT_RECONNECT_DELAY);
                             
                             thread::spawn(move || {
-                                let mqtt = Mqtt::new(self.config).connect();
-                                
-                                mqtt
+                                Mqtt::new(self.config)
+                                    .connect()
                                     .subscribe()
                                     .parse(data_sender,
                                            common_sender,

@@ -202,8 +202,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>,
     let (common_sender, common_receiver) = channel::<CommonMsg>();
     
     // INCOMING DATA
-    let mqtt = mqtt::Mqtt::new(app.config.clone()).connect();
-    mqtt
+    mqtt::Mqtt::new(app.config.clone())
+        .connect()
         .subscribe()
         // THREAD SPAWN
         // -> incomming packet
@@ -211,7 +211,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>,
         .parse(data_sender,
                common_sender.clone(),
         );
-
+    
     // SCREEN
     let mut render = Render::new(app);
     
