@@ -46,3 +46,6 @@ duration_limit_device_remove_warn = 5000
 duration_limit_device_unknown = 1000
 
 log_file = "/home/conan/git/srbpavel/ratatui/grideye_tui/grideye_ratatui_error_msg.log"
+
+delay_ui_refresh = 250
+#delay_ui_refresh = 25

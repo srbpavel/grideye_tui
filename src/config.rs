@@ -68,6 +68,9 @@ pub struct Config {
 
     #[default("default_grideye_ratatui_error_msg.log")]
     log_file: &'static str,
+
+    #[default(250)]
+    delay_ui_refresh: u64
 }
 
 /*

@@ -66,7 +66,7 @@ pub const DATA_ALARMA_CAPACITY: usize = 3;
 // 1000ms / 25ms = 40fps/Hz
 // TOTALY BLOCKS LAPTOP !!! study more why as TUI was ok
 // + also verify if my esp code is fast enough 40hz + mqtt and so on ..
-pub const UI_REFRESH_DELAY: u64 = 250;
+//pub const UI_REFRESH_DELAY: u64 = 250;
 
 const TEMPERATURE_ERROR_SLICE_VALUE: f32 = 99.0;
 const TEMPERATURE_DEFAULT_VALUE: f32 = 126.0;

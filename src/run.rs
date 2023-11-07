@@ -75,7 +75,7 @@ impl EventHandler {
         let (sender, receiver) = channel();
 
         let _handler = {
-            let sender = sender.clone();
+            //let sender = sender.clone();
 
             std::thread::spawn(move || {
                 // TICK init
@@ -237,7 +237,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>,
     let fixed_tab = Device2Tab::Fixed(mqtt_topic_error.clone());
     render.insert_device(fixed_tab);
 
-    let events = EventHandler::new(ui::UI_REFRESH_DELAY);
+    //let events = EventHandler::new(ui::UI_REFRESH_DELAY);
+    let events = EventHandler::new(render.app.config.delay_ui_refresh);
     
     loop {
         // ON_PAUSE we stop receive mqtt
