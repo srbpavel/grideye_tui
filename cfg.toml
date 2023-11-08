@@ -13,7 +13,6 @@ mqtt_user = ""
 mqtt_pass = ""
 mqtt_port = 1883
 mqtt_topic_base = "/grid_eye"
-#mqtt_topic_error_suffix = "error"
 mqtt_topic_error_suffix = "common_log"
 mqtt_topic_wildcard = "#"
 
@@ -47,5 +46,10 @@ duration_limit_device_unknown = 1000
 
 log_file = "/home/conan/git/srbpavel/ratatui/grideye_tui/grideye_ratatui_error_msg.log"
 
+# miliseconds
+# cpu 5% 
 delay_ui_refresh = 250
+# cpu 10%
+#delay_ui_refresh = 100
+# cpu 40% -> too much
 #delay_ui_refresh = 25

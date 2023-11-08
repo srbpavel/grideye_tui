@@ -110,7 +110,8 @@ impl EventHandler {
                                         Ok(())
                                     }
                                 },
-                                _ => unimplemented!(),
+                                //_ => unimplemented!(),
+                                _ => Ok(()),
                             }
                             .expect("failed to send terminal event")
                         }
@@ -195,7 +196,10 @@ pub fn run(config: Config) -> Result<()> {
 //
 fn run_app<B: Backend>(terminal: &mut Terminal<B>,
                        app: App,
-) -> Result<()> {
+) -> Result<()>
+where
+    B: Backend
+{
     // LAUNCH MEASUREMENT THREAD
     let (data_sender, data_receiver) = channel::<mqtt::Payload>();
     // COMMON LOG
@@ -237,7 +241,6 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>,
     let fixed_tab = Device2Tab::Fixed(mqtt_topic_error.clone());
     render.insert_device(fixed_tab);
 
-    //let events = EventHandler::new(ui::UI_REFRESH_DELAY);
     let events = EventHandler::new(render.app.config.delay_ui_refresh);
     
     loop {
@@ -406,13 +409,6 @@ fn startup() -> Result<()> {
     let mut stdout = std::io::stdout();
 
     stdout.execute(EnterAlternateScreen)?;
-    /*
-    stdout.execute(
-        PushKeyboardEnhancementFlags(
-            KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-        )
-    )?;
-    */
     
     enable_raw_mode()?;
 
@@ -424,7 +420,6 @@ fn shutdown() -> Result<()> {
     let mut stdout = std::io::stdout();
 
     stdout.execute(LeaveAlternateScreen)?;
-    //stdout.execute(PopKeyboardEnhancementFlags)?;
     
     disable_raw_mode()?;
     

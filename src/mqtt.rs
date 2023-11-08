@@ -22,7 +22,6 @@ use bytes::Bytes;
 use rumqttc::Client;
 use rumqttc::Connection;
 use rumqttc::Event;
-use rumqttc::MqttOptions;
 use rumqttc::mqttbytes::v4::Packet;
 use rumqttc::QoS;
 
@@ -304,7 +303,7 @@ impl Mqtt {
 
     //
     pub fn connect(mut self) -> Self {
-        let mut options = MqttOptions::new(
+        let mut options = rumqttc::MqttOptions::new(
             uniq_id(self.config.mqtt_client_id),
             self.config.mqtt_broker_url,
             self.config.mqtt_port,

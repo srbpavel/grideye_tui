@@ -101,6 +101,13 @@ const STATUS_RECEIVING: &str = "receiving";
 const STATUS_UNKNOWN: &str = "unknown";
 const STATUS_TO_REMOVE: &str = "to_remove";
 
+enum SplitBy {
+    Ratio,
+    Max(u16),
+    #[allow(unused)]
+    Min(u16),
+}
+
 type UiValue = f64;
 
 pub struct Render {
@@ -233,7 +240,11 @@ impl Render {
                 .split(chunks[0]);
             
             // bottom --> left (value) + right (color + log)
-            let chunks_bottom = split_area(chunks[1], Horizontal, 2);
+            let chunks_bottom = split_area(chunks[1],
+                                           Horizontal,
+                                           2,
+                                           SplitBy::Ratio,
+            );
             
             // bottom --> right --> color map + log
             let chunks_right = Layout::default()
@@ -245,9 +256,19 @@ impl Render {
                 .split(chunks_bottom[1]);
             
             // bottom --> left --> value --> LEN * LEN canvas
-            let chunks_lines_left = split_area(chunks_bottom[0], Vertical, LEN);
+            let chunks_lines_left = split_area(chunks_bottom[0],
+                                               Vertical,
+                                               LEN,
+                                               SplitBy::Ratio,
+            );
             // bottom --> right --> color_map --> LEN * LEN canvas
-            let chunks_lines_right = split_area(chunks_right[0], Vertical, LEN);
+            let chunks_lines_right = split_area(chunks_right[0],
+                                                Vertical,
+                                                LEN,
+                                                //SplitBy::Ratio,
+                                                //SplitBy::Max(1),
+                                                SplitBy::Min(1),
+            );
             
             // max + min graph
             draw_chart(
@@ -333,6 +354,7 @@ impl Render {
         let chunks = split_area(area,
                                 Direction::Horizontal,
                                 self.devices.len(),
+                                SplitBy::Ratio,
         );
         
         let mut device_counter = 0;
@@ -745,14 +767,13 @@ impl Device {
 
         let alarma = match &self.alarma {
             Some(a) => {
-                format!("alarma: {:02.02}-{:02.02} -> {:02.02}",
-                        a.min,
+                format!("alarma: {:02.02} - {:02.02} -> {:02.02}",
                         a.max,
+                        a.min,
                         a.diff,
                 )
             },
             None => {
-                //format!("alarma: None")
                 String::from("alarma: None")
             },
         };
@@ -770,6 +791,7 @@ impl Device {
         let alarma_history = self.alarma_history
             .iter()
             .map(|a| {
+                // why i do not get leading zeroes for diff ???
                 format!(" {:?} / {:02.02}",
                         a.datetime,
                         a.diff,
@@ -994,11 +1016,17 @@ fn draw_map_and_values(config: &Config,
             // todo(!) --> this two can go async
             let chunks_cell_left = split_area(chunks_lines_left[row],
                                               Horizontal,
-                                              LEN);
+                                              LEN,
+                                              SplitBy::Ratio,
+            );
 
             let chunks_cell_right = split_area(chunks_lines_right[row],
                                                Horizontal,
-                                               LEN);
+                                               LEN,
+                                               //SplitBy::Ratio,
+                                               //SplitBy::Max(4),
+                                               SplitBy::Min(3),
+            );
 
             // todo(!) --> try rayon for first time ???
             (0..LEN)
@@ -1037,18 +1065,28 @@ fn draw_map_and_values(config: &Config,
 
 // map render: color
 //
+// used in all_heatmap
+//
 fn draw_map_only(chunks: Rect,
                  array: Vec<Pixel>,
                  frame: &mut Frame,
 ) {
-    let chunks_lines = split_area(chunks, Vertical, LEN);
+    let chunks_lines = split_area(chunks,
+                                  Vertical,
+                                  LEN,
+                                  //SplitBy::Ratio,
+                                  SplitBy::Max(2),
+    );
 
     // todo(!) --> measure duration + async
     (0..LEN)
         .for_each(|row| {
             let chunks_cells = split_area(chunks_lines[row],
                                           Horizontal,
-                                          LEN);
+                                          LEN,
+                                          //SplitBy::Ratio,
+                                          SplitBy::Max(2*2),
+            );
 
             // todo(!) --> try rayon for first time ???
             (0..LEN)
@@ -1186,14 +1224,38 @@ fn show_canvas_color(
 fn split_area(input: Rect,
               direction: Direction,
               size: usize,
+              split: SplitBy,
 ) -> Rc<[Rect]> {
+    let mut v = (0..size)
+        .map(|_|
+             match split {
+                 SplitBy::Ratio => Constraint::Ratio(1, size as u32),
+                 SplitBy::Min(v) => Constraint::Min(v),
+                 SplitBy::Max(v) => Constraint::Max(v),
+             }
+        )
+        .collect::<Vec<_>>();
+
+    // todo!()
+    v.push(Constraint::Min(0));
+    
     Layout::default()
         .direction(direction)
         .constraints(
+            v.as_ref()
+            /*
             (0..size)
-                .map(|_| Constraint::Ratio(1, size as u32))
+                // original
+                //.map(|_| Constraint::Ratio(1, size as u32))
+                // len
+                //.map(|_| Constraint::Length(size as u16))
+                // min/max
+                .map(|_| Constraint::Max(1))
                 .collect::<Vec<_>>()
+                //
+                //.push(Constraint::Min(0))
                 .as_ref()
+            */
         )
         .split(input)
 }
