@@ -39,6 +39,7 @@ use ratatui::layout::Direction::Horizontal;
 use ratatui::layout::Direction::Vertical;
 use ratatui::layout::Layout;
 use ratatui::layout::Rect;
+use ratatui::layout::Alignment;
 use ratatui::style::Color;
 use ratatui::style::Style;
 use ratatui::symbols::Marker;
@@ -92,6 +93,9 @@ const COLOR_NONE_MAP: Color = Color::Cyan;
 const COLOR_NONE_MAP_CANVAS: Color = Color::Green;
 const COLOR_NONE_MAP_VALUES: Color = Color::Black;
 
+const COLOR_BLOCK_BORDER: Color = Color::DarkGray;
+const COLOR_BLOCK_TITLE: Color = Color::Green;
+
 // try harder -> as this number can hide bar minimal color/value
 const BAR_LEN: usize = PALLETE.len() / 19;
 
@@ -103,6 +107,7 @@ const STATUS_TO_REMOVE: &str = "to_remove";
 
 enum SplitBy {
     Ratio,
+    #[allow(unused)]
     Max(u16),
     #[allow(unused)]
     Min(u16),
@@ -256,18 +261,31 @@ impl Render {
                 .split(chunks_bottom[1]);
             
             // bottom --> left --> value --> LEN * LEN canvas
-            let chunks_lines_left = split_area(chunks_bottom[0],
+            let inner_left  = inner_block(Some("left: values"),
+                                          chunks_bottom[0],
+                                          frame,
+            );
+            let chunks_lines_left = split_area(inner_left,
                                                Vertical,
                                                LEN,
-                                               SplitBy::Ratio,
+                                               // ok, but big space between rows
+                                               //SplitBy::Ratio,
+                                               SplitBy::Max(1),
             );
             // bottom --> right --> color_map --> LEN * LEN canvas
-            let chunks_lines_right = split_area(chunks_right[0],
+            let inner_right_map  = inner_block(Some("right: map"),
+                                          chunks_right[0],
+                                          frame,
+            );
+            let chunks_lines_right = split_area(inner_right_map,
                                                 Vertical,
                                                 LEN,
-                                                //SplitBy::Ratio,
+                                                //
+                                                SplitBy::Ratio,
+                                                // same as Min(1)
                                                 //SplitBy::Max(1),
-                                                SplitBy::Min(1),
+                                                // tester - but small
+                                                //SplitBy::Min(1),
             );
             
             // max + min graph
@@ -397,19 +415,19 @@ impl Render {
                 // top map_as table
                 // todo!() -> watch chunk index as this can panic/crash
                 draw_map_as_table(&self.app.config,
+                                  Some(&format!("map_as_table: {name}")),
                                   chunks_inner[0], 
                                   pixel_array.clone(),
                                   frame,
-                                  name,
                 );
                 
-                // make border here also + title
                 // heatmap_only
-                draw_map_only(chunks_inner[1], 
+                draw_map_only(Some(&format!("map_only: {name}")),
+                              chunks_inner[1],
                               pixel_array.clone(),
                               frame,
                 );
-
+                
                 // logs
                 let alarma = single_device.logs();
                 
@@ -959,10 +977,10 @@ fn draw_bar_as_tab(config: &Config,
 
 //
 fn draw_map_as_table(config: &Config,
+                     title: Option<&str>,
                      chunks: Rect,
                      array: Vec<Pixel>,
                      frame: &mut Frame,
-                     topic: &String,
 ) {
 
     let lines: Vec<Row> = (0..LEN)
@@ -981,24 +999,43 @@ fn draw_map_as_table(config: &Config,
                     )
                 }).collect::<Vec<Cell>>();
             
-            Row::new(cells).height(1)
+            Row::new(cells)
+                //.height(2) // it add's blank/black space, not enlarge bg
+                //.bottom_margin(1) // 1 set space in between
         }).collect();
 
     let rows_count = lines.len() as u32;
-    let rows = (0..rows_count)
-        //.into_iter()
-        .map(|_row_index| Constraint::Ratio(1, rows_count)).collect::<Vec<Constraint>>();
+    let mut rows = (0..rows_count)
+        .map(|_row_index|
+             // we have space between cells, even with added Constraint::Min(0)
+             //Constraint::Ratio(1, rows_count)
+             // ok, nice and without space between cells
+             Constraint::Min(5) // 5 as we have {:02.02}
+             // add's space blank/black where there is no char
+             //Constraint::Min(8)
+             // tester
+             //Constraint::Max(5)
+        )
+        .collect::<Vec<Constraint>>();
 
-    let table_title = format!("table: {}", &**topic);
+    rows.push(Constraint::Min(0));
+    
+    let block = match title {
+        Some(t) => Block::default().title(t),
+        None => Block::default(),
+    }.borders(Borders::ALL);
     
     let table = Table::new(lines)
-        .block(Block::default()
-               .title(table_title)
-               .borders(Borders::ALL)
+        .block(block)
+        /*
+        .header(
+            Row::new(vec!["0", "1", "2"," 3", "4", "5", "6", "7"])
         )
-        .widths(&rows);
-    
-    frame.render_widget(table, chunks);
+        */
+        .widths(&rows)
+        .column_spacing(0); // default is 1
+
+frame.render_widget(table, chunks);
 }
     
 // map render: value + color
@@ -1010,22 +1047,38 @@ fn draw_map_and_values(config: &Config,
                        array: Vec<Pixel>,
                        frame: &mut Frame,
 ) {
+    /*
+    // add block around left and right
+    let inner_left  = inner_block(Some("left values"),
+                                  chunks_lines_left,
+                                  frame,
+    );
+    */
+    
     // todo(!) --> measure duration + async
     (0..LEN)
         .for_each(|row| {
             // todo(!) --> this two can go async
-            let chunks_cell_left = split_area(chunks_lines_left[row],
+            let chunks_cell_left = split_area(chunks_lines_left[row], // index not safe!!
                                               Horizontal,
                                               LEN,
-                                              SplitBy::Ratio,
+                                              // ok, but blank/black space
+                                              //SplitBy::Ratio,
+                                              // ok, but need to add +1 
+                                              // 8 as {:02}|{:02.02}
+                                              SplitBy::Min(8+1),
             );
 
             let chunks_cell_right = split_area(chunks_lines_right[row],
                                                Horizontal,
                                                LEN,
-                                               //SplitBy::Ratio,
-                                               //SplitBy::Max(4),
-                                               SplitBy::Min(3),
+                                               //
+                                               SplitBy::Ratio,
+                                               // ok, but small
+                                               // 4 - laptop miss last col
+                                               //SplitBy::Max(3),
+                                               // tester
+                                               //SplitBy::Min(3),
             );
 
             // todo(!) --> try rayon for first time ???
@@ -1065,17 +1118,25 @@ fn draw_map_and_values(config: &Config,
 
 // map render: color
 //
-// used in all_heatmap
+// used in all_heatmap for each device
 //
-fn draw_map_only(chunks: Rect,
+fn draw_map_only(title: Option<&str>,
+                 chunk: Rect,
                  array: Vec<Pixel>,
                  frame: &mut Frame,
 ) {
-    let chunks_lines = split_area(chunks,
+    let inner = inner_block(title,
+                            chunk,
+                            frame,
+    );
+
+    let chunks_lines = split_area(inner, //chunks,
                                   Vertical,
                                   LEN,
-                                  //SplitBy::Ratio,
-                                  SplitBy::Max(2),
+                                  // ok, full but not rectangle
+                                  SplitBy::Ratio,
+                                  // ok, but small at big screen
+                                  //SplitBy::Max(2),
     );
 
     // todo(!) --> measure duration + async
@@ -1084,8 +1145,10 @@ fn draw_map_only(chunks: Rect,
             let chunks_cells = split_area(chunks_lines[row],
                                           Horizontal,
                                           LEN,
-                                          //SplitBy::Ratio,
-                                          SplitBy::Max(2*2),
+                                          // ok, full but not rectangle
+                                          SplitBy::Ratio,
+                                          // ok, but small at big screen
+                                          //SplitBy::Max(2*2),
             );
 
             // todo(!) --> try rayon for first time ???
@@ -1236,27 +1299,13 @@ fn split_area(input: Rect,
         )
         .collect::<Vec<_>>();
 
-    // todo!()
+    // last chunk will be not expanded
+    // this work's ok only for SplitBy::Min and ::Max
     v.push(Constraint::Min(0));
     
     Layout::default()
         .direction(direction)
-        .constraints(
-            v.as_ref()
-            /*
-            (0..size)
-                // original
-                //.map(|_| Constraint::Ratio(1, size as u32))
-                // len
-                //.map(|_| Constraint::Length(size as u16))
-                // min/max
-                .map(|_| Constraint::Max(1))
-                .collect::<Vec<_>>()
-                //
-                //.push(Constraint::Min(0))
-                .as_ref()
-            */
-        )
+        .constraints(v.as_ref())
         .split(input)
 }
 
@@ -1327,4 +1376,36 @@ fn build_cell(config: &Config,
                 })
         )
     )
+}
+
+//
+// especially for heatmap(lot's of canvas rectangles)
+// we want to have it inside block
+// as we can add border and title
+//
+fn inner_block(title: Option<&str>,
+               chunk: Rect,
+               frame: &mut Frame,
+) -> Rect {
+    let block = match title {
+        Some(t) => {
+            Block::default()
+                .title(t)
+                .title_style(Style::default().fg(COLOR_BLOCK_TITLE))
+                .title_alignment(Alignment::Center)
+        },
+        None => {
+            Block::default()
+        }
+    };
+
+    let block = block
+        .style(Style::default())
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(COLOR_BLOCK_BORDER));
+    
+    let inner = block.inner(chunk);
+    frame.render_widget(block, chunk);
+                        
+    inner
 }
