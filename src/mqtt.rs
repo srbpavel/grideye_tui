@@ -179,6 +179,7 @@ pub struct Payload {
     pub max: PayloadBoundary,
     pub array: Array,
     pub datetime: config::DateTime,
+    pub raw: Bytes,
     
 }
 
@@ -242,6 +243,16 @@ impl Payload {
                               topic_parent,
                         );
                         */
+
+                        //negative min value
+                        if self.min.value.le(&0.0) {
+                            info!("NEGATIVE >>> topic: {} value: {:?}\npayload: {:?}",
+                                  topic_parent,
+                                  self.min.value,
+                                  self.array,
+                            )
+                        }
+                        //
                         
                         single_device.fill(config,
                                            self,
@@ -391,6 +402,10 @@ impl Mqtt {
                                         CommonMsg::new(publish_data.payload)
                                     )
                                     .unwrap();
+                            } else {
+                                error!("invalid payload: {:#?}",
+                                       publish_data,
+                                );
                             }
                         },
                         Ok(invalid_payload) => {
@@ -441,8 +456,9 @@ fn parse_incomming(publish_data: rumqttc::Publish,
     let mut min = PayloadBoundary::init(BoundaryVariant::Min);
     
     // Payload
+    let raw = publish_data.payload.clone();
     let chunks = publish_data.payload.chunks(CHUNK_SIZE);
-    let array: [Temperature; LEN * LEN] = chunks
+    let array: [Temperature; LEN * LEN] = chunks.clone()
         .enumerate()
         .map(|(index, chunk)| {
             let chunk_result: Result<[u8; 4], _> = chunk.try_into();
@@ -453,10 +469,23 @@ fn parse_incomming(publish_data: rumqttc::Publish,
                     
                     min.update(value, index);
                     max.update(value, index);
+
+                    // DEBUG RAW
+                    if value.le(&0.0) {
+                        info!("NEGATIVE raw >>> index: {}, chunk: {:?}",
+                              index,
+                              chunk,
+                        )
+                    }
                     
                     value
                 },
-                Err(_e) => {
+                Err(e) => {
+                    error!("not valid chunk_result: {e:?}\nchunk: {:?}\nchunks: {:?}",
+                           chunks,
+                           chunk_result,
+                    );
+
                     TEMPERATURE_ERROR_VALUE
                 },
             }
@@ -488,6 +517,8 @@ fn parse_incomming(publish_data: rumqttc::Publish,
         max,
         array,
         datetime: now,
+        // DEBUG
+        raw,
     }
 }
 

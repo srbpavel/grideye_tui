@@ -242,13 +242,14 @@ where
     render.insert_device(fixed_tab);
 
     let events = EventHandler::new(render.app.config.delay_ui_refresh);
-    
+
     loop {
         // ON_PAUSE we stop receive mqtt
         // verify retention ???
         if render.app.should_pause.eq(&false) {
             // Payload via channel from incomming mqtt
             for channel_data in data_receiver.try_iter() {
+                // update or init device data
                 channel_data.parse(&render.app.config,
                                    &mut render.devices,
                 );
@@ -286,6 +287,15 @@ where
             render.draw(frame);
         })?;
 
+        /*
+        // OBS
+        //here we will pasuse if temperature negative
+        if negative_pause.eq(&true) {
+            render.app.on_pause();
+        }
+        //_
+        */
+        
         // KEY ACTION + TICK
         match events.next()? {
             Event::Tick => {},

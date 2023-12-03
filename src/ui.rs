@@ -105,6 +105,14 @@ const STATUS_RECEIVING: &str = "receiving";
 const STATUS_UNKNOWN: &str = "unknown";
 const STATUS_TO_REMOVE: &str = "to_remove";
 
+const VALUE_BORDER: &str = "|";
+const VALUE_SPACER: &str = "_";
+
+enum FirstCell {
+    True,
+    False,
+}
+
 enum SplitBy {
     Ratio,
     #[allow(unused)]
@@ -273,7 +281,7 @@ impl Render {
                                                SplitBy::Max(1),
             );
             // bottom --> right --> color_map --> LEN * LEN canvas
-            let inner_right_map  = inner_block(Some("right: map"),
+            let inner_right_map  = inner_block(Some("right/left: map"),
                                           chunks_right[0],
                                           frame,
             );
@@ -785,7 +793,7 @@ impl Device {
 
         let alarma = match &self.alarma {
             Some(a) => {
-                format!("alarma: {:02.02} - {:02.02} -> {:02.02}",
+                format!("alarma: {:05.02} - {:05.02} -> {:05.02}",
                         a.max,
                         a.min,
                         a.diff,
@@ -809,8 +817,7 @@ impl Device {
         let alarma_history = self.alarma_history
             .iter()
             .map(|a| {
-                // why i do not get leading zeroes for diff ???
-                format!(" {:?} / {:02.02}",
+                format!(" {:?} / {:05.02}",
                         a.datetime,
                         a.diff,
                 )
@@ -852,8 +859,8 @@ fn draw_chart(
     frame: &mut Frame,
     area: Rect,
 ) {
-    let info_max = format!("temperature_max: {:02.02}", device.boundary_max.value);
-    let info_min = format!("temperature_min: {:02.02}", device.boundary_min.value);
+    let info_max = format!("temperature_max: {:05.02}", device.boundary_max.value);
+    let info_min = format!("temperature_min: {:05.02}", device.boundary_min.value);
 
     let mut boundary_max: Temperature = TEMPERATURE_MAX;
     let mut boundary_min: Temperature = TEMPERATURE_MIN;
@@ -895,7 +902,7 @@ fn draw_chart(
             Axis::default()
                 // text color
                 .title(Span::styled(
-                    format!("X Axis | diff: {:02.02}", device.diff),
+                    format!("X Axis | diff: {:05.02}", device.diff),
                     Style::default().fg(Color::Green)),
                 )
                 // border color
@@ -912,8 +919,8 @@ fn draw_chart(
                         
                 ])
                 .labels(vec![
-                    Span::raw(format!("{:02.02}", boundary_min_with_offset)),
-                    Span::raw(format!("{:02.02}", boundary_max_with_offset)),
+                    Span::raw(format!("{:05.02}", boundary_min_with_offset)),
+                    Span::raw(format!("{:05.02}", boundary_max_with_offset)),
                 ]),
         );
 
@@ -940,11 +947,11 @@ fn draw_bar_as_tab(config: &Config,
                 Cell::from(
                     Span::styled(
                         if config.flag_show_bar_index.eq(&true) {
-                            format!("{:02}|{:02.02}",
+                            format!("{:02}|{:05.02}",
                                     index,
                                     color.0,
                             )
-                        } else { format!("{:02.02}", color.0) },
+                        } else { format!("{:05.02}", color.0) },
                         Style::default()
                             .fg(COLOR_BAR_TEXT)
                             /*
@@ -1047,14 +1054,6 @@ fn draw_map_and_values(config: &Config,
                        array: Vec<Pixel>,
                        frame: &mut Frame,
 ) {
-    /*
-    // add block around left and right
-    let inner_left  = inner_block(Some("left values"),
-                                  chunks_lines_left,
-                                  frame,
-    );
-    */
-    
     // todo(!) --> measure duration + async
     (0..LEN)
         .for_each(|row| {
@@ -1064,9 +1063,8 @@ fn draw_map_and_values(config: &Config,
                                               LEN,
                                               // ok, but blank/black space
                                               //SplitBy::Ratio,
-                                              // ok, but need to add +1 
-                                              // 8 as {:02}|{:02.02}
-                                              SplitBy::Min(8+1),
+                                              // ok
+                                              SplitBy::Max(9+1),
             );
 
             let chunks_cell_right = split_area(chunks_lines_right[row],
@@ -1083,7 +1081,8 @@ fn draw_map_and_values(config: &Config,
 
             // todo(!) --> try rayon for first time ???
             (0..LEN)
-                .for_each(|cell| {
+                .enumerate()
+                .for_each(|(index, cell)| {
                     let pixel = get_pixel(&array,
                                           row,
                                           cell,
@@ -1100,6 +1099,7 @@ fn draw_map_and_values(config: &Config,
                             if config.flag_show_color.eq(&true) { ShowColor::True } else { ShowColor::False },
                             frame,
                             *ch,
+                            if index.eq(&0) {FirstCell::True} else {FirstCell::False},
                         );
                     }
                     
@@ -1207,7 +1207,7 @@ fn draw_logs(
 
     let list = List::new(items)
         .block(Block::default()
-               .title("Logs")
+               .title("right/right: Logs")
                .borders(Borders::ALL)
         );
     
@@ -1225,6 +1225,7 @@ fn show_canvas_values(
     show_color: ShowColor,
     frame: &mut Frame,
     area: Rect,
+    first_cell: FirstCell,
 ) {
     let canvas = Canvas::default()
         .block(Block::default())
@@ -1251,8 +1252,23 @@ fn show_canvas_values(
                 0 as UiValue,
                 Span::styled(
                     match show_index {
-                        ShowIndex::True => format!("{:02}|{:02.02}", pixel.index, pixel.value),
-                        ShowIndex::False => format!("{:02.02}", pixel.value)
+                        ShowIndex::True =>
+                            format!("{}{:02}{VALUE_SPACER}{:05.02}{VALUE_BORDER}",
+                                    match first_cell {
+                                        FirstCell::True => VALUE_BORDER,
+                                        FirstCell::False => "",
+                                    },
+                                    pixel.index,
+                                    pixel.value,
+                            ),
+                        ShowIndex::False =>
+                            format!("{}{:05.02}{VALUE_BORDER}",
+                                    match first_cell {
+                                        FirstCell::True => VALUE_BORDER,
+                                        FirstCell::False => "",
+                                    },
+                                    pixel.value,
+                            )
                     },
                     Style::default().fg(color_text),
                 ),
@@ -1363,11 +1379,11 @@ fn build_cell(config: &Config,
             format!("  "),
              */
             if config.flag_show_map_table_index.eq(&true) {
-                format!("{:02}|{:02.02}",
+                format!("{:02}|{:05.02}",
                         index,
                         pixel.value,
                 )
-            } else { format!("{:02.02}", pixel.value) },
+            } else { format!("{:05.02}", pixel.value) },
             Style::default()
                 .fg(COLOR_MAP_TABLE_TEXT)
                 .bg(match pixel.color {

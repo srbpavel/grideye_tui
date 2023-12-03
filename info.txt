@@ -25,3 +25,6 @@ cat -n 2.log|tail -n25
 ### WATCH
 watch -n0.1 "tail -n50 2.log"
 watch -n0.1 "tail -n50 grideye_ratatui_error_msg.log"
+
+### NEGATIVE -0.0 value
+egrep -in "index" grideye_ratatui_error_msg.log|cut -d" " -f7|cut -d"," -f1|sort -g|uniq -c|sort -g
